@@ -1,8 +1,27 @@
 use clap::{self, Parser, Subcommand};
 use keyring::Entry;
+use reqwest::{Client, Request};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+
+trait Source {
+    fn kind() -> String;
+    fn sync(&self, _: Client); // TODO: this will eventually take local edits
+}
+
+struct AzureDevops {
+    org: String,
+    pat: String,
+}
+
+impl Source for AzureDevops {
+    fn kind() -> String {
+        "AzureDevops".to_owned()
+    }
+
+    fn sync(&self, client: Client) {}
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
