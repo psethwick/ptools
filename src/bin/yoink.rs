@@ -2,6 +2,7 @@ use clap::{self, Parser, Subcommand};
 use keyring::Entry;
 use reqwest::{Client, Request};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -28,24 +29,30 @@ impl Source for AzureDevops {
 #[command(about = "That data, it's mine", long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Root,
 }
 
 #[derive(Debug, Subcommand)]
-enum Commands {
-    #[command(arg_required_else_help = true)]
-    AddAzureDevopsOrg {
-        org: String,
-        pat: String,
-    },
-    DeleteAzureDevopsOrg {
-        org: String,
-    },
+enum Root {
+    #[command(subcommand)]
+    Add(AddCommands),
+    #[command(subcommand)]
+    Delete(DeleteCommands),
+}
+
+#[derive(Debug, Subcommand)]
+enum AddCommands {
+    AddAzureDevopsOrg { org: String, pat: String },
+}
+
+#[derive(Debug, Subcommand)]
+enum DeleteCommands {
+    DeleteAzureDevopsOrg { org: String },
 }
 
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
-    azure_devops_orgs: Vec<String>,
+    sources: HashMap<String, Vec<String>>,
 }
 
 struct CredentialManager {
@@ -81,6 +88,15 @@ fn get_config_path() -> Option<PathBuf> {
     })
 }
 
+fn get_data_path(kind: &str, name: &str) -> Option<PathBuf> {
+    dirs::data_dir().map(|mut path| {
+        path.push("yoink");
+        path.push(kind);
+        path.push(name);
+        path
+    })
+}
+
 fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Some(config_path) = get_config_path() {
         if config_path.exists() {
@@ -108,24 +124,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cred_manager = CredentialManager::new("yoink");
 
     match args.command {
-        Commands::AddAzureDevopsOrg { org, pat } => {
-            match cred_manager.store_pat(&org, &pat) {
+        Root::Add(a) => match a {
+            AddCommands::AddAzureDevopsOrg { org, pat } => match cred_manager.store_pat(&org, &pat)
+            {
                 Ok(()) => {
                     let mut config = load_config()?;
-                    config.azure_devops_orgs.push(org.to_string());
+                    config.sources["ado"].push(org.to_string());
                     save_config(&config)?;
                     println!("PAT stored securely")
                 }
                 Err(e) => eprintln!("Failed to store PAT: {}", e),
-            };
-        }
-        Commands::DeleteAzureDevopsOrg { org } => match cred_manager.delete_pat(&org) {
-            Ok(()) => {
-                let mut config = load_config()?;
-                config.azure_devops_orgs.retain(|o| *o != org);
-                save_config(&config)?;
-            }
-            Err(e) => eprintln!("Failed to delete PAT: {}", e),
+            },
+        },
+        Root::Delete(d) => match d {
+            DeleteCommands::DeleteAzureDevopsOrg { org } => match cred_manager.delete_pat(&org) {
+                Ok(()) => {
+                    let mut config = load_config()?;
+                    config.sources.get_mut()["ado"].retain(|o| *o != org);
+                    save_config(&config)?;
+                }
+                Err(e) => eprintln!("Failed to delete PAT: {}", e),
+            },
         },
     }
 
