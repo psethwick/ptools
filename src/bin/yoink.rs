@@ -135,8 +135,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 Ok(()) => {
                     let mut config = load_config()?;
-                    if let Some(ado_orgs) = config.sources.get_mut("ado") {
-                        ado_orgs.push(org);
+                    match config.sources.get_mut("ado") {
+                        Some(ado_orgs) => ado_orgs.push(org),
+                        None => {
+                            config.sources.insert("ado".to_owned(), vec![org]);
+                        }
                     }
                     save_config(&config)?;
                     println!("PAT stored securely")
@@ -156,7 +159,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => eprintln!("Failed to delete PAT: {}", e),
             },
         },
-        Root::Sync => todo!(),
+        Root::Sync => {
+            let config = load_config()?;
+            config.sources.iter().for_each(|(k, v)| {
+                dbg!(k);
+                dbg!(v);
+            });
+        }
     }
 
     println!("Config saved to: {:?}", get_config_path());
