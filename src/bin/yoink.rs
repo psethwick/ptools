@@ -129,7 +129,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 Ok(()) => {
                     let mut config = load_config()?;
-                    config.sources["ado"].push(org.to_string());
+                    if let Some(ado_orgs) = config.sources.get_mut("ado") {
+                        ado_orgs.push(org);
+                    }
                     save_config(&config)?;
                     println!("PAT stored securely")
                 }
@@ -140,7 +142,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             DeleteCommands::DeleteAzureDevopsOrg { org } => match cred_manager.delete_pat(&org) {
                 Ok(()) => {
                     let mut config = load_config()?;
-                    config.sources.get_mut()["ado"].retain(|o| *o != org);
+                    if let Some(ado_orgs) = config.sources.get_mut("ado") {
+                        ado_orgs.retain(|o| *o != org);
+                    }
                     save_config(&config)?;
                 }
                 Err(e) => eprintln!("Failed to delete PAT: {}", e),
