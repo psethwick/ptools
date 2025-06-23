@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use clap::{self, Parser, Subcommand};
 use keyring::Entry;
 use reqwest::{Client, Request};
@@ -6,9 +7,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+#[async_trait]
 trait Source {
     fn kind() -> String;
-    fn sync(&self, _: Client); // TODO: this will eventually take local edits
+    async fn sync(&self, client: &Client) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 struct AzureDevops {
@@ -16,12 +18,15 @@ struct AzureDevops {
     pat: String,
 }
 
+#[async_trait]
 impl Source for AzureDevops {
     fn kind() -> String {
         "AzureDevops".to_owned()
     }
 
-    fn sync(&self, client: Client) {}
+    async fn sync(&self, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -38,6 +43,7 @@ enum Root {
     Add(AddCommands),
     #[command(subcommand)]
     Delete(DeleteCommands),
+    Sync,
 }
 
 #[derive(Debug, Subcommand)]
@@ -150,6 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => eprintln!("Failed to delete PAT: {}", e),
             },
         },
+        Root::Sync => todo!(),
     }
 
     println!("Config saved to: {:?}", get_config_path());
