@@ -14,7 +14,7 @@ use std::sync::Arc;
 #[async_trait]
 trait Source {
     fn kind() -> String;
-    async fn sync(&self, client: &Client) -> Result<(), Box<dyn std::error::Error>>;
+    async fn sync(self, client: &Client) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 struct AzureDevops {
@@ -28,7 +28,7 @@ impl Source for AzureDevops {
         "AzureDevops".to_owned()
     }
 
-    async fn sync(&self, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+    async fn sync(self, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -86,22 +86,13 @@ impl CredentialManager {
         Self { service_name }
     }
 
-    // Add this to see more details about the entry
     fn store_pat(&self, org: &str, pat: &str) -> Result<(), keyring::Error> {
         let entry = Entry::new(self.service_name, org)?;
-        println!(
-            "Storing - Service: '{}', Account: '{}'",
-            self.service_name, org
-        );
         entry.set_password(pat)
     }
 
     fn get_pat(&self, org: &str) -> Result<String, keyring::Error> {
         let entry = Entry::new(self.service_name, org)?;
-        println!(
-            "Retrieving - Service: '{}', Account: '{}'",
-            self.service_name, org
-        );
         entry.get_password()
     }
 
@@ -150,10 +141,10 @@ fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
     let cred_manager = CredentialManager::new("yoink");
-
     match args.command {
         Root::Add(a) => match a {
             AddCommands::AddAzureDevopsOrg { org, pat } => match cred_manager.store_pat(&org, &pat)
@@ -161,10 +152,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(()) => {
                     let mut config = load_config()?;
                     match config.sources.get_mut("ado") {
-                        Some(ado_orgs) => ado_orgs.push(org),
+                        Some(ado_orgs) if !ado_orgs.contains(&org) => ado_orgs.push(org),
                         None => {
                             config.sources.insert("ado".to_owned(), vec![org]);
                         }
+                        _ => {}
                     }
                     save_config(&config)?;
                     println!("PAT stored securely")
@@ -186,19 +178,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Root::Sync => {
             let config = load_config()?;
-            dbg!("hey");
-            config.sources.into_iter().for_each(|(k, v)| match k {
-                val if val == "ado".to_owned() => {
-                    for org in v {
-                        let pat = cred_manager.get_pat(&org);
-                        dbg!(&pat);
-                        if let Ok(pat) = cred_manager.get_pat(&org) {
-                            dbg!(pat);
-                        }
-                    }
+            let client = reqwest::Client::new();
+            let futures = config
+                .sources
+                .into_iter()
+                .filter_map(|(k, v)| match k {
+                    val if val == "ado" => Some(
+                        v.into_iter()
+                            .filter_map(|org| {
+                                cred_manager
+                                    .get_pat(&org)
+                                    .ok()
+                                    .map(|pat| AzureDevops { org, pat }.sync(&client))
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    _ => None,
+                })
+                .flatten();
+            let results: Vec<Result<(), Box<dyn std::error::Error>>> = join_all(futures).await;
+
+            for result in results {
+                if let Err(e) = result {
+                    eprintln!("Sync failed: {}", e);
                 }
-                _ => {}
-            });
+            }
         }
     }
 
