@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use clap::{self, Parser, Subcommand};
+use futures::future::join_all;
 use keyring::Entry;
 use reqwest::{Client, Request};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+// use tokio::sync::Semaphore;
 
 #[async_trait]
 trait Source {
@@ -25,6 +29,18 @@ impl Source for AzureDevops {
     }
 
     async fn sync(&self, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+        let projects_url = format!(
+            "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
+            self.org
+        );
+        let projects_response: Value = client
+            .get(&projects_url)
+            .bearer_auth(&self.pat)
+            .send()
+            .await?
+            .json()
+            .await?;
+        dbg!(projects_response);
         Ok(())
     }
 }
@@ -70,13 +86,22 @@ impl CredentialManager {
         Self { service_name }
     }
 
+    // Add this to see more details about the entry
     fn store_pat(&self, org: &str, pat: &str) -> Result<(), keyring::Error> {
         let entry = Entry::new(self.service_name, org)?;
+        println!(
+            "Storing - Service: '{}', Account: '{}'",
+            self.service_name, org
+        );
         entry.set_password(pat)
     }
 
     fn get_pat(&self, org: &str) -> Result<String, keyring::Error> {
         let entry = Entry::new(self.service_name, org)?;
+        println!(
+            "Retrieving - Service: '{}', Account: '{}'",
+            self.service_name, org
+        );
         entry.get_password()
     }
 
@@ -161,9 +186,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Root::Sync => {
             let config = load_config()?;
-            config.sources.iter().for_each(|(k, v)| {
-                dbg!(k);
-                dbg!(v);
+            dbg!("hey");
+            config.sources.into_iter().for_each(|(k, v)| match k {
+                val if val == "ado".to_owned() => {
+                    for org in v {
+                        let pat = cred_manager.get_pat(&org);
+                        dbg!(&pat);
+                        if let Ok(pat) = cred_manager.get_pat(&org) {
+                            dbg!(pat);
+                        }
+                    }
+                }
+                _ => {}
             });
         }
     }
