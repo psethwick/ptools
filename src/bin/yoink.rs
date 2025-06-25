@@ -1,25 +1,149 @@
+use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use keyring::Entry;
-use reqwest::{Client, Request};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
-// use tokio::sync::Semaphore;
+use tokio::task;
 
 #[async_trait]
 trait Source {
     fn kind() -> String;
-    async fn sync(self, client: &Client) -> Result<(), Box<dyn std::error::Error>>;
+    async fn sync(self, client: &Client) -> Result<(), Error>;
 }
 
 struct AzureDevops {
     org: String,
     pat: String,
+}
+
+async fn process_project(
+    client: &Client,
+    org: &str,
+    pat: &str,
+    project: &Value,
+) -> Result<Vec<Value>, Error> {
+    let project_name = project["name"]
+        .as_str()
+        .ok_or_else(|| anyhow!("Project name not found"))?;
+
+    let project_id = project["id"]
+        .as_str()
+        .ok_or_else(|| anyhow!("Project id not found"))?;
+
+    let wiql_query = format!(
+        r#"
+        SELECT [System.Id]
+        FROM WorkItems
+        WHERE [System.TeamProject] = '{}'
+        ORDER BY [System.Id]
+        "#,
+        project_name
+    );
+
+    let wiql_url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/wiql?api-version=7.1",
+        org, project_id
+    );
+
+    let wiql_body = json!({
+        "query": wiql_query
+    });
+
+    let wiql_response = client
+        .post(&wiql_url)
+        .bearer_auth(pat)
+        .json(&wiql_body)
+        .send()
+        .await?
+        .json::<Value>()
+        .await?;
+
+    let work_item_ids: Vec<String> = wiql_response
+        .get("workItems")
+        .and_then(|wi| wi.as_array())
+        .map(|work_items| {
+            work_items
+                .iter()
+                .filter_map(|wi| wi["id"].as_u64())
+                .map(|id| id.to_string())
+                .collect()
+        })
+        .unwrap_or_else(Vec::new);
+
+    if work_item_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let fields_to_fetch = [
+        "System.AssignedTo",
+        "System.BoardColumn",
+        "System.TeamProject",
+        "System.ChangedDate",
+        "Microsoft.VSTS.Common.ActivatedDate",
+        "System.Description",
+        "System.Title",
+        "System.WorkItemType",
+    ];
+    let fields_param = fields_to_fetch.join(",");
+
+    let batch_tasks: Vec<_> = work_item_ids
+        .chunks(200)
+        .map(|batch| {
+            let client = client.clone();
+            let org = org.to_string();
+            let pat = pat.to_string();
+            let fields_param = fields_param.clone();
+            let batch: Vec<String> = batch.to_vec();
+
+            task::spawn(async move {
+                let ids_param = batch.join(",");
+                let batch_url = format!(
+                    "https://dev.azure.com/{}/_apis/wit/workitems?ids={}&fields={}",
+                    org, ids_param, fields_param
+                );
+
+                let batch_response = client
+                    .get(&batch_url)
+                    .bearer_auth(&pat)
+                    .send()
+                    .await?
+                    .json::<Value>()
+                    .await?;
+
+                let batch_items = batch_response["value"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_else(Vec::new);
+
+                Ok::<Vec<Value>, Error>(batch_items)
+            })
+        })
+        .collect();
+
+    let batch_results = join_all(batch_tasks).await;
+
+    let mut items = Vec::new();
+    for result in batch_results {
+        match result {
+            Ok(Ok(batch_items)) => items.extend(batch_items),
+            Ok(Err(e)) => eprintln!(
+                "Warning: Could not fetch work items batch for project {}: {}",
+                project_name, e
+            ),
+            Err(e) => eprintln!(
+                "Warning: Batch task failed for project {}: {}",
+                project_name, e
+            ),
+        }
+    }
+
+    Ok(items)
 }
 
 #[async_trait]
@@ -28,7 +152,7 @@ impl Source for AzureDevops {
         "AzureDevops".to_owned()
     }
 
-    async fn sync(self, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+    async fn sync(self, client: &Client) -> Result<(), Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -40,7 +164,36 @@ impl Source for AzureDevops {
             .await?
             .json()
             .await?;
-        dbg!(projects_response);
+
+        let empty_projects = Vec::new();
+        let projects = projects_response["value"]
+            .as_array()
+            .unwrap_or(&empty_projects);
+
+        let project_tasks: Vec<_> = projects
+            .iter()
+            .map(|project| {
+                let client = client.clone();
+                let org = self.org.clone();
+                let pat = self.pat.clone();
+                let project = project.clone();
+
+                task::spawn(async move { process_project(&client, &org, &pat, &project).await })
+            })
+            .collect();
+
+        let project_results = join_all(project_tasks).await;
+
+        let mut items = Vec::new();
+        for result in project_results {
+            match result {
+                Ok(Ok(project_items)) => items.extend(project_items),
+                Ok(Err(e)) => eprintln!("Project processing error: {}", e),
+                Err(e) => eprintln!("Task join error: {}", e),
+            }
+        }
+
+        dbg!(items);
         Ok(())
     }
 }
@@ -196,7 +349,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     _ => None,
                 })
                 .flatten();
-            let results: Vec<Result<(), Box<dyn std::error::Error>>> = join_all(futures).await;
+            let results: Vec<Result<(), Error>> = join_all(futures).await;
 
             for result in results {
                 if let Err(e) = result {
