@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
+use std::fs::File;
 use std::path::PathBuf;
 use tokio::task;
 
@@ -80,17 +81,17 @@ async fn process_project(
         return Ok(Vec::new());
     }
 
-    let fields_to_fetch = [
-        "System.AssignedTo",
-        "System.BoardColumn",
-        "System.TeamProject",
-        "System.ChangedDate",
-        "Microsoft.VSTS.Common.ActivatedDate",
-        "System.Description",
-        "System.Title",
-        "System.WorkItemType",
-    ];
-    let fields_param = fields_to_fetch.join(",");
+    // let field_names = [
+    //     "System.AssignedTo",
+    //     "System.BoardColumn",
+    //     "System.TeamProject",
+    //     "System.ChangedDate",
+    //     "Microsoft.VSTS.Common.ActivatedDate",
+    //     "System.Description",
+    //     "System.Title",
+    //     "System.WorkItemType",
+    // ];
+    // let fields_param = field_names.join(",");
 
     let batch_tasks: Vec<_> = work_item_ids
         .chunks(200)
@@ -98,14 +99,17 @@ async fn process_project(
             let client = client.clone();
             let org = org.to_string();
             let pat = pat.to_string();
-            let fields_param = fields_param.clone();
+            // let fields_param = fields_param.clone();
             let batch: Vec<String> = batch.to_vec();
 
             task::spawn(async move {
                 let ids_param = batch.join(",");
                 let batch_url = format!(
-                    "https://dev.azure.com/{}/_apis/wit/workitems?ids={}&fields={}",
-                    org, ids_param, fields_param
+                    "https://dev.azure.com/{}/_apis/wit/workitems?ids={}&$expend=all",
+                    // TODO: probably put back the explicit fields once I know what I want to use
+                    // and change $expand to only 'relations'
+                    org,
+                    ids_param
                 );
 
                 let batch_response = client
@@ -193,7 +197,17 @@ impl Source for AzureDevops {
             }
         }
 
-        dbg!(items);
+        if let Some(mut path) = get_data_path("ado", &self.org) {
+            if let Some(parent_dir) = path.parent() {
+                std::fs::create_dir_all(parent_dir)?;
+            }
+
+            path.set_file_name("items.json");
+            let file = File::create(&path)?;
+            serde_json::to_writer_pretty(file, &items)?;
+
+            println!("Successfully serialized items to {:?}", path);
+        }
         Ok(())
     }
 }
@@ -358,8 +372,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
-    println!("Config saved to: {:?}", get_config_path());
 
     Ok(())
 }
