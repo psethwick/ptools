@@ -105,7 +105,7 @@ async fn process_project(
             task::spawn(async move {
                 let ids_param = batch.join(",");
                 let batch_url = format!(
-                    "https://dev.azure.com/{}/_apis/wit/workitems?ids={}&$expend=all",
+                    "https://dev.azure.com/{}/_apis/wit/workitems?ids={}&$expand=All",
                     // TODO: probably put back the explicit fields once I know what I want to use
                     // and change $expand to only 'relations'
                     org,
