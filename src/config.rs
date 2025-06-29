@@ -1,3 +1,4 @@
+use anyhow::Ok;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,30 +9,22 @@ pub struct Config {
     pub sources: HashMap<String, Vec<String>>,
 }
 
-pub struct CredentialManager {
-    service_name: &'static str,
+const SERVICE_NAME: &'static str = "yoink";
+
+pub fn store_password(kind: &str, name: &str, password: &str) -> Result<(), anyhow::Error> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", kind, name))?;
+    entry.set_password(password)?;
+    Ok(())
 }
 
-// TODO: I'm not sure this justifies its existence
-impl CredentialManager {
-    pub fn new(service_name: &'static str) -> Self {
-        Self { service_name }
-    }
+pub fn get_password(kind: &str, name: &str) -> Result<String, anyhow::Error> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", kind, name))?;
+    Ok(entry.get_password()?)
+}
 
-    pub fn store_pat(&self, org: &str, pat: &str) -> Result<(), keyring::Error> {
-        let entry = Entry::new(self.service_name, org)?;
-        entry.set_password(pat)
-    }
-
-    pub fn get_pat(&self, org: &str) -> Result<String, keyring::Error> {
-        let entry = Entry::new(self.service_name, org)?;
-        entry.get_password()
-    }
-
-    pub fn delete_pat(&self, org: &str) -> Result<(), keyring::Error> {
-        let entry = Entry::new(self.service_name, org)?;
-        entry.delete_credential()
-    }
+pub fn delete_password(kind: &str, org: &str) -> Result<(), anyhow::Error> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", kind, org))?;
+    Ok(entry.delete_credential()?)
 }
 
 fn get_config_path() -> Option<PathBuf> {
@@ -51,7 +44,7 @@ pub fn get_data_path(kind: &str, name: &str) -> Option<PathBuf> {
     })
 }
 
-pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
+pub fn load_config() -> Result<Config, anyhow::Error> {
     if let Some(config_path) = get_config_path() {
         if config_path.exists() {
             let content = fs::read_to_string(config_path)?;
@@ -62,7 +55,7 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     Ok(Config::default())
 }
 
-pub fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+pub fn save_config(config: &Config) -> Result<(), anyhow::Error> {
     if let Some(config_path) = get_config_path() {
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent)?;

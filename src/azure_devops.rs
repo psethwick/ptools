@@ -1,6 +1,6 @@
-use crate::config::get_data_path;
+use crate::config::{delete_password, get_data_path, load_config, save_config, store_password};
 use crate::source::Source;
-use anyhow::{Error, anyhow};
+use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use futures::future::join_all;
 use reqwest::Client;
@@ -18,7 +18,7 @@ async fn process_project(
     org: &str,
     pat: &str,
     project: &Value,
-) -> Result<Vec<Value>, Error> {
+) -> Result<Vec<Value>> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
@@ -143,7 +143,43 @@ async fn process_project(
 #[async_trait]
 impl Source for AzureDevops {
     fn kind() -> String {
-        "AzureDevops".to_owned()
+        "azure_devops".to_owned()
+    }
+
+    fn add(&self) -> anyhow::Result<()> {
+        match store_password("azure_devops", &self.org, &self.pat) {
+            Ok(()) => {
+                let mut config = load_config()?;
+                match config.sources.get_mut("azure_devops") {
+                    Some(ado_orgs) if !ado_orgs.contains(&self.org) => {
+                        ado_orgs.push(self.org.clone())
+                    }
+                    None => {
+                        config
+                            .sources
+                            .insert("azure_devops".to_owned(), vec![self.org.clone()]);
+                    }
+                    _ => {}
+                }
+                save_config(&config)?;
+                Ok(())
+            }
+            Err(e) => Err(anyhow!("Failed to store PAT: {}", e)),
+        }
+    }
+
+    fn delete(&self) -> anyhow::Result<()> {
+        match delete_password("azure_devops", &self.org) {
+            Ok(()) => {
+                let mut config = load_config()?;
+                if let Some(ado_orgs) = config.sources.get_mut("azure_devops") {
+                    ado_orgs.retain(|o| *o != self.org);
+                }
+                save_config(&config)?;
+                Ok(())
+            }
+            Err(e) => Err(anyhow!("Failed to delete PAT: {}", e)),
+        }
     }
 
     async fn sync(self, client: &Client) -> Result<(), Error> {
