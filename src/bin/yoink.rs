@@ -3,8 +3,8 @@ use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use tokio;
 use yoink_rs::azure_devops::AzureDevops;
-use yoink_rs::config::{get_password, load_config};
-use yoink_rs::source::Source;
+use yoink_rs::config::load_config;
+use yoink_rs::source::{Source, get_password};
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]

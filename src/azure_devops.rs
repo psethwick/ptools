@@ -1,4 +1,4 @@
-use crate::config::{delete_password, get_data_path, load_config, save_config, store_password};
+use crate::config::{load_config, save_config};
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
@@ -142,22 +142,29 @@ async fn process_project(
 
 #[async_trait]
 impl Source for AzureDevops {
+    type Config = String;
     fn kind() -> String {
         "azure_devops".to_owned()
     }
 
+    fn config(&self) -> Self::Config {
+        self.org.clone()
+    }
+
+    fn name(&self) -> String {
+        self.org.clone()
+    }
+
     fn add(&self) -> anyhow::Result<()> {
-        match store_password("azure_devops", &self.org, &self.pat) {
+        match self.store_password(&self.pat) {
             Ok(()) => {
                 let mut config = load_config()?;
-                match config.sources.get_mut("azure_devops") {
+                match config.sources.get_mut(&kind) {
                     Some(ado_orgs) if !ado_orgs.contains(&self.org) => {
                         ado_orgs.push(self.org.clone())
                     }
                     None => {
-                        config
-                            .sources
-                            .insert("azure_devops".to_owned(), vec![self.org.clone()]);
+                        config.sources.insert(kind.clone(), vec![self.org.clone()]);
                     }
                     _ => {}
                 }
@@ -169,10 +176,10 @@ impl Source for AzureDevops {
     }
 
     fn delete(&self) -> anyhow::Result<()> {
-        match delete_password("azure_devops", &self.org) {
+        match self.delete_password() {
             Ok(()) => {
                 let mut config = load_config()?;
-                if let Some(ado_orgs) = config.sources.get_mut("azure_devops") {
+                if let Some(ado_orgs) = config.sources.get_mut(&AzureDevops::kind()) {
                     ado_orgs.retain(|o| *o != self.org);
                 }
                 save_config(&config)?;
@@ -223,7 +230,7 @@ impl Source for AzureDevops {
             }
         }
 
-        if let Some(path) = get_data_path("azure_devops", &format!("{}.json", &self.org)) {
+        if let Some(path) = self.get_data_path("work.json") {
             if let Some(parent_dir) = path.parent() {
                 std::fs::create_dir_all(parent_dir)?;
             }
