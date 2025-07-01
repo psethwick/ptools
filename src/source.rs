@@ -2,17 +2,14 @@ use anyhow::Error;
 use async_trait::async_trait;
 use keyring::Entry;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const SERVICE_NAME: &'static str = "yoink";
 
 #[async_trait]
 pub trait Source {
-    type Config: Serialize + Deserialize;
     fn kind() -> String;
     fn name(&self) -> String;
-    fn config(&self) -> Config;
     fn add(&self) -> anyhow::Result<()>;
     fn delete(&self) -> anyhow::Result<()>;
     async fn sync(self, client: &Client) -> Result<(), Error>;

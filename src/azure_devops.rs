@@ -142,13 +142,8 @@ async fn process_project(
 
 #[async_trait]
 impl Source for AzureDevops {
-    type Config = String;
     fn kind() -> String {
         "azure_devops".to_owned()
-    }
-
-    fn config(&self) -> Self::Config {
-        self.org.clone()
     }
 
     fn name(&self) -> String {
@@ -156,6 +151,7 @@ impl Source for AzureDevops {
     }
 
     fn add(&self) -> anyhow::Result<()> {
+        let kind = Self::kind();
         match self.store_password(&self.pat) {
             Ok(()) => {
                 let mut config = load_config()?;
