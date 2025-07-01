@@ -1,4 +1,4 @@
-use crate::config::{load_config, save_config};
+use crate::config::{SourceConfig, load_config};
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
@@ -151,20 +151,10 @@ impl Source for AzureDevops {
     }
 
     fn add(&self) -> anyhow::Result<()> {
-        let kind = Self::kind();
         match self.store_password(&self.pat) {
             Ok(()) => {
                 let mut config = load_config()?;
-                match config.sources.get_mut(&kind) {
-                    Some(ado_orgs) if !ado_orgs.contains(&self.org) => {
-                        ado_orgs.push(self.org.clone())
-                    }
-                    None => {
-                        config.sources.insert(kind.clone(), vec![self.org.clone()]);
-                    }
-                    _ => {}
-                }
-                save_config(&config)?;
+                config.add_source(SourceConfig::AzureDevops(self.org.clone()))?;
                 Ok(())
             }
             Err(e) => Err(anyhow!("Failed to store PAT: {}", e)),
@@ -175,10 +165,7 @@ impl Source for AzureDevops {
         match self.delete_password() {
             Ok(()) => {
                 let mut config = load_config()?;
-                if let Some(ado_orgs) = config.sources.get_mut(&AzureDevops::kind()) {
-                    ado_orgs.retain(|o| *o != self.org);
-                }
-                save_config(&config)?;
+                config.remove_source(&SourceConfig::AzureDevops(self.org.clone()))?;
                 Ok(())
             }
             Err(e) => Err(anyhow!("Failed to delete PAT: {}", e)),

@@ -1,11 +1,48 @@
+use crate::{
+    azure_devops::AzureDevops,
+    source::{Source, get_password},
+};
 use anyhow::Ok;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::{fs, path::PathBuf};
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+pub enum SourceConfig {
+    AzureDevops(String), // organisation name
+}
+
+pub enum Sources {
+    AzureDevops(AzureDevops),
+}
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
-    pub sources: HashMap<String, Vec<String>>,
+    pub sources: Vec<SourceConfig>,
+}
+
+impl Config {
+    pub fn add_source(&mut self, new_source: SourceConfig) -> anyhow::Result<()> {
+        if !self.sources.contains(&new_source) {
+            self.sources.push(new_source);
+        }
+        save_config(&self)?;
+        anyhow::Ok(())
+    }
+
+    pub fn remove_source(&mut self, sc_to_remove: &SourceConfig) -> anyhow::Result<()> {
+        self.sources.retain(|s| s != sc_to_remove);
+        save_config(&self)?;
+        anyhow::Ok(())
+    }
+}
+
+pub fn from_config(sc: SourceConfig) -> Result<impl Source> {
+    match sc {
+        SourceConfig::AzureDevops(ado) => {
+            get_password(&AzureDevops::kind(), &ado).map(|pat| AzureDevops { org: ado, pat })
+        }
+    }
 }
 
 fn get_config_path() -> Option<PathBuf> {

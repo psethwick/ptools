@@ -3,8 +3,8 @@ use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use tokio;
 use yoink_rs::azure_devops::AzureDevops;
-use yoink_rs::config::load_config;
-use yoink_rs::source::{Source, get_password};
+use yoink_rs::config::{from_config, load_config};
+use yoink_rs::source::Source;
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -53,19 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let futures = config
                 .sources
                 .into_iter()
-                .filter_map(|(k, v)| match k {
-                    val if val == "azure_devops" => Some(
-                        v.into_iter()
-                            .filter_map(|org| {
-                                get_password("azure_devops", &org)
-                                    .ok()
-                                    .map(|pat| AzureDevops { org, pat }.sync(&client))
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                    _ => None,
-                })
+                .map(|s| from_config(s).map(|s| s.sync(&client)))
                 .flatten();
+
             let results: Vec<Result<(), Error>> = join_all(futures).await;
 
             for result in results {
