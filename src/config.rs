@@ -39,8 +39,8 @@ impl Config {
 
 pub fn from_config(sc: SourceConfig) -> Result<impl Source> {
     match sc {
-        SourceConfig::AzureDevops(ado) => {
-            get_password(&AzureDevops::kind(), &ado).map(|pat| AzureDevops { org: ado, pat })
+        SourceConfig::AzureDevops(org) => {
+            get_password(&AzureDevops::kind(), &org).map(|pat| AzureDevops { org, pat })
         }
     }
 }
