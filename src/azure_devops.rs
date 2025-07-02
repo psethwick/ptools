@@ -1,4 +1,5 @@
 use crate::config::{SourceConfig, load_config};
+use crate::data::Data;
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
@@ -142,8 +143,14 @@ async fn process_project(
 
 #[async_trait]
 impl Source for AzureDevops {
+    // TODO: I wonder if kind() is necessary
+    // or name()
     fn kind() -> String {
         "azure_devops".to_owned()
+    }
+
+    fn source_config(&self) -> SourceConfig {
+        SourceConfig::AzureDevops(self.org.clone())
     }
 
     fn name(&self) -> String {
@@ -172,7 +179,7 @@ impl Source for AzureDevops {
         }
     }
 
-    async fn sync(self, client: &Client) -> Result<(), Error> {
+    async fn sync(self, client: &Client) -> Result<Vec<Data>, Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org

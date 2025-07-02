@@ -4,16 +4,20 @@ use keyring::Entry;
 use reqwest::Client;
 use std::path::PathBuf;
 
+use crate::{config::SourceConfig, data::Data};
+
 const SERVICE_NAME: &'static str = "yoink";
 
 #[async_trait]
 pub trait Source {
     fn kind() -> String;
+    fn source_config(&self) -> SourceConfig;
     fn name(&self) -> String;
     fn add(&self) -> anyhow::Result<()>;
     fn delete(&self) -> anyhow::Result<()>;
-    async fn sync(self, client: &Client) -> Result<(), Error>;
+    async fn sync(self, client: &Client) -> Result<Vec<Data>, Error>;
 
+    // TODO: this will come out (Source won't be responsible for saving to disk)
     fn get_data_path(&self, name: &str) -> Option<PathBuf> {
         dirs::data_dir().map(|mut path| {
             path.push("yoink");
