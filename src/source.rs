@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::{config::SourceConfig, data::Data};
 
-const SERVICE_NAME: &'static str = "yoink";
+const SERVICE_NAME: &str = "yoink";
 
 #[async_trait]
 pub trait Source {
@@ -41,6 +41,6 @@ pub trait Source {
 }
 
 pub fn get_password(kind: &str, name: &str) -> Result<String, anyhow::Error> {
-    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", kind, name))?;
+    let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
     Ok(entry.get_password()?)
 }

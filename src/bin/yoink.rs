@@ -1,9 +1,9 @@
-use anyhow::Error;
+use anyhow::Result;
 use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
-use tokio;
 use yoink_rs::azure_devops::AzureDevops;
 use yoink_rs::config::{from_config, load_config};
+use yoink_rs::data::Data;
 use yoink_rs::source::Source;
 
 #[derive(Debug, Parser)]
@@ -53,16 +53,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let futures = config
                 .sources
                 .into_iter()
-                .map(|s| from_config(s).map(|s| s.sync(&client)))
-                .flatten();
+                .flat_map(|s| from_config(s).map(|s| s.sync(&client)));
 
-            let results: Vec<Result<(), Error>> = join_all(futures).await;
-
-            for result in results {
-                if let Err(e) = result {
-                    eprintln!("Sync failed: {}", e);
-                }
-            }
+            let results: Vec<Result<Vec<Data>>> = join_all(futures).await;
+            let _data: Vec<Data> = results
+                .into_iter()
+                .flat_map(|rvd| match rvd {
+                    Ok(vd) => Some(vd),
+                    Err(e) => {
+                        eprintln!("Sync failed: {e}");
+                        None
+                    }
+                })
+                .flatten()
+                .collect();
         }
     }
 

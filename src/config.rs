@@ -26,13 +26,13 @@ impl Config {
         if !self.sources.contains(&new_source) {
             self.sources.push(new_source);
         }
-        save_config(&self)?;
+        save_config(self)?;
         anyhow::Ok(())
     }
 
     pub fn remove_source(&mut self, sc_to_remove: &SourceConfig) -> anyhow::Result<()> {
         self.sources.retain(|s| s != sc_to_remove);
-        save_config(&self)?;
+        save_config(self)?;
         anyhow::Ok(())
     }
 }

@@ -3,21 +3,21 @@ use chrono::{DateTime, Utc};
 use crate::config::SourceConfig;
 
 pub struct Work {
-    source: SourceConfig,
-    project: String,
-    id: String,
-    parent_id: Option<String>,
-    title: String,
-    work_type: String,
-    description: Option<String>,
-    version: Option<String>,
-    state: Option<String>,
-    created_id: Option<String>,
-    assigned_id: Option<String>,
-    column: Option<String>,
-    created: Option<DateTime<Utc>>,
-    modified: Option<DateTime<Utc>>,
-    url: Option<String>,
+    pub source: SourceConfig,
+    pub project: String,
+    pub id: String,
+    pub parent_id: Option<String>,
+    pub title: String,
+    pub work_type: String,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub state: Option<String>,
+    pub created_by_id: Option<String>,
+    pub assigned_to_id: Option<String>,
+    pub column: Option<String>,
+    pub created: Option<DateTime<Utc>>,
+    pub modified: Option<DateTime<Utc>>,
+    pub url: Option<String>,
 }
 
 pub struct Person {
