@@ -1,5 +1,3 @@
-use std::fs::File;
-
 use anyhow::Result;
 use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
@@ -7,7 +5,7 @@ use yoink_rs::azure_devops::AzureDevops;
 use yoink_rs::config::Config;
 use yoink_rs::data::Data;
 use yoink_rs::source::Source;
-use yoink_rs::storage::get_data_path;
+use yoink_rs::storage::save;
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -37,7 +35,7 @@ enum DeleteCommands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     let args = Cli::parse();
     match args.command {
         Root::Add(a) => match a {
@@ -68,15 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .flatten()
                 .collect();
 
-            if let Some(path) = get_data_path("data.json") {
-                if let Some(parent_dir) = path.parent() {
-                    std::fs::create_dir_all(parent_dir)?;
-                }
-
-                let file = File::create(&path)?;
-                serde_json::to_writer_pretty(file, &data)?;
-                println!("Successfully serialized items to {path:?}");
-            }
+            save(&data, "data.json")?;
         }
     }
 
