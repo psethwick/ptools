@@ -75,17 +75,17 @@ impl Config {
         self.sources.iter().flat_map(|s| s.get_source()).collect()
     }
 
-    pub fn add_source(&mut self, new_source: SourceConfig) -> anyhow::Result<()> {
+    pub fn add_source(&mut self, new_source: SourceConfig) -> Result<()> {
         if !self.sources.contains(&new_source) {
             self.sources.push(new_source);
         }
         self.save()?;
-        anyhow::Ok(())
+        Ok(())
     }
 
-    pub fn remove_source(&mut self, sc_to_remove: &SourceConfig) -> anyhow::Result<()> {
+    pub fn remove_source(&mut self, sc_to_remove: &SourceConfig) -> Result<()> {
         self.sources.retain(|s| s != sc_to_remove);
         self.save()?;
-        anyhow::Ok(())
+        Ok(())
     }
 }

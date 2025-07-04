@@ -5,7 +5,6 @@ use yoink_rs::azure_devops::AzureDevops;
 use yoink_rs::config::Config;
 use yoink_rs::data::SourceData;
 use yoink_rs::source::Source;
-use yoink_rs::storage::save;
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -64,8 +63,9 @@ async fn main() -> Result<()> {
                     }
                 })
                 .collect();
-
-            save(&data)?;
+            for d in data {
+                d.save()?;
+            }
         }
     }
 
