@@ -37,7 +37,7 @@ impl Config {
     }
 }
 
-pub fn from_config(sc: SourceConfig) -> Result<impl Source> {
+pub fn source_from_config(sc: SourceConfig) -> Result<impl Source> {
     match sc {
         SourceConfig::AzureDevops(org) => {
             get_password(&AzureDevops::kind(), &org).map(|pat| AzureDevops { org, pat })

@@ -1,7 +1,8 @@
-use chrono::{DateTime, Utc};
-
 use crate::config::SourceConfig;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct Work {
     pub source: SourceConfig,
     pub project: String,
@@ -20,12 +21,15 @@ pub struct Work {
     pub url: Option<String>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Person {
     source: SourceConfig,
     id: String,
     name: String,
 }
 
+#[derive(Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)] // most of these will probably be Work
 pub enum Data {
     Work(Work),
     Person(Person),

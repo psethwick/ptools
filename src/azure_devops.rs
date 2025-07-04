@@ -3,9 +3,10 @@ use crate::data::{Data, Work};
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use futures::future::join_all;
 use reqwest::Client;
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::task;
 
@@ -14,56 +15,50 @@ pub struct AzureDevops {
     pub pat: String,
 }
 
-fn deserialize_value<T>(value: &Value, context_path: &str) -> Option<T>
-where
-    T: DeserializeOwned,
-{
-    match serde_json::from_value::<T>(value.clone()) {
-        Ok(deserialized_value) => Some(deserialized_value),
-        Err(e) => {
-            eprintln!(
-                "Warning: Failed to deserialize {} to type {}: {}",
-                context_path,
-                std::any::type_name::<T>(),
-                e
-            );
-            None
-        }
-    }
+#[derive(Serialize, Deserialize, Debug)]
+struct AzureDevOpsWorkItemFields {
+    #[serde(rename = "System.TeamProject")]
+    pub project: String,
+    #[serde(rename = "System.Title")]
+    pub title: String,
+    #[serde(rename = "System.WorkItemType")]
+    pub item_type: String,
+    #[serde(rename = "System.Description")]
+    pub description: Option<String>,
+    #[serde(rename = "System.State")]
+    pub state: Option<String>,
+    #[serde(rename = "System.Parent")]
+    pub parent_id: Option<i64>,
+    #[serde(rename = "System.BoardColumn")]
+    pub column: Option<String>,
+    #[serde(rename = "System.CreatedDate")]
+    pub created_date: Option<DateTime<Utc>>,
+    #[serde(rename = "System.ChangedDate")]
+    pub changed_date: Option<DateTime<Utc>>,
+    #[serde(rename = "System.CreatedBy")]
+    pub created_by: Option<AzureDevOpsPerson>,
+    #[serde(rename = "System.AssignedTo")]
+    pub assigned_to: Option<AzureDevOpsPerson>,
 }
 
-pub fn get_prop<T>(value: &Value, key: &str) -> Option<T>
-where
-    T: DeserializeOwned,
-{
-    value
-        .get(key)
-        .and_then(|v| deserialize_value::<T>(v, &format!("key '{key}'")))
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AzureDevOpsPerson {
+    pub id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
 }
 
-pub fn get_nested_prop<T>(value: &Value, path: &[&str]) -> Option<T>
-where
-    T: DeserializeOwned,
-{
-    let mut current_value = value;
+#[derive(Serialize, Deserialize, Debug)]
+struct AzureDevOpsWorkItem {
+    pub id: i64,
+    pub rev: i64,
+    pub url: String,
+    pub fields: AzureDevOpsWorkItemFields,
+}
 
-    if path.is_empty() {
-        return deserialize_value::<T>(current_value, "root value");
-    }
-
-    for (i, &key) in path.iter().enumerate() {
-        if let Some(v) = current_value.get(key) {
-            current_value = v;
-        } else {
-            return None;
-        }
-
-        if i == path.len() - 1 {
-            return deserialize_value::<T>(current_value, &format!("nested path '{path:?}'"));
-        }
-    }
-
-    None
+#[derive(Deserialize, Debug)]
+struct AzureDevOpsBatchResponse {
+    pub value: Vec<AzureDevOpsWorkItem>,
 }
 
 async fn process_project(
@@ -71,7 +66,7 @@ async fn process_project(
     org: &str,
     pat: &str,
     project: &Value,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Data>> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
@@ -89,9 +84,8 @@ async fn process_project(
         "#
     );
 
-    let wiql_url = format!(
-        "https://dev.azure.com/{org}/{project_id}/_apis/wit/wiql?api-version=7.1"
-    );
+    let wiql_url =
+        format!("https://dev.azure.com/{org}/{project_id}/_apis/wit/wiql?api-version=7.1");
 
     let wiql_body = json!({
         "query": wiql_query
@@ -122,17 +116,21 @@ async fn process_project(
         return Ok(Vec::new());
     }
 
-    // let field_names = [
-    //     "System.AssignedTo",
-    //     "System.BoardColumn",
-    //     "System.TeamProject",
-    //     "System.ChangedDate",
-    //     "Microsoft.VSTS.Common.ActivatedDate",
-    //     "System.Description",
-    //     "System.Title",
-    //     "System.WorkItemType",
-    // ];
-    // let fields_param = field_names.join(",");
+    let field_names = [
+        "System.TeamProject",
+        "System.Title",
+        "System.WorkItemType",
+        "System.Description",
+        "System.State",
+        "System.Parent",
+        "System.BoardColumn",
+        "System.CreatedDate",
+        "System.ChangedDate",
+        "System.CreatedBy",
+        "System.AssignedTo",
+    ];
+
+    let fields_param = field_names.join(",");
 
     let batch_tasks: Vec<_> = work_item_ids
         .chunks(200)
@@ -140,13 +138,13 @@ async fn process_project(
             let client = client.clone();
             let org = org.to_string();
             let pat = pat.to_string();
-            // let fields_param = fields_param.clone();
+            let fields_param = fields_param.clone();
             let batch: Vec<String> = batch.to_vec();
 
             task::spawn(async move {
                 let ids_param = batch.join(",");
                 let batch_url = format!(
-                    "https://dev.azure.com/{org}/_apis/wit/workitems?ids={ids_param}&$expand=All"
+                    "https://dev.azure.com/{org}/_apis/wit/workitems?ids={ids_param}&fields={fields_param}"
                 );
 
                 let batch_response = client
@@ -154,15 +152,16 @@ async fn process_project(
                     .bearer_auth(&pat)
                     .send()
                     .await?
-                    .json::<Value>()
-                    .await?;
+                    .json::<AzureDevOpsBatchResponse>()
+                    .await?
+                    .value;
 
-                let batch_items = batch_response["value"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_else(Vec::new);
+                // let batch_items = batch_response["value"]
+                //     .as_array()
+                //     .cloned()
+                //     .unwrap_or_else(Vec::new);
 
-                Ok::<Vec<Value>, Error>(batch_items)
+                Ok::<Vec<AzureDevOpsWorkItem>, Error>(batch_response)
             })
         })
         .collect();
@@ -176,13 +175,32 @@ async fn process_project(
             Ok(Err(e)) => eprintln!(
                 "Warning: Could not fetch work items batch for project {project_name}: {e}"
             ),
-            Err(e) => eprintln!(
-                "Warning: Batch task failed for project {project_name}: {e}"
-            ),
+            Err(e) => eprintln!("Warning: Batch task failed for project {project_name}: {e}"),
         }
     }
 
-    Ok(items)
+    Ok(items
+        .iter()
+        .map(|az| {
+            Data::Work(Work {
+                source: SourceConfig::AzureDevops(org.to_string()),
+                id: az.id.to_string(),
+                version: Some(az.rev.to_string()),
+                url: Some(az.url.clone()),
+                project: az.fields.project.clone(),
+                title: az.fields.title.clone(),
+                description: az.fields.description.clone(),
+                created: az.fields.created_date,
+                created_by_id: az.fields.created_by.as_ref().map(|cb| cb.id.to_string()),
+                assigned_to_id: az.fields.assigned_to.as_ref().map(|at| at.id.to_string()),
+                column: az.fields.column.clone(),
+                modified: az.fields.changed_date,
+                state: az.fields.state.clone(),
+                work_type: az.fields.item_type.clone(),
+                parent_id: az.fields.parent_id.map(|pi| pi.to_string()),
+            })
+        })
+        .collect())
 }
 
 #[async_trait]
@@ -264,44 +282,7 @@ impl Source for AzureDevops {
             }
         }
 
-        // if let Some(path) = self.get_data_path("work.json") {
-        //     if let Some(parent_dir) = path.parent() {
-        //         std::fs::create_dir_all(parent_dir)?;
-        //     }
-        //
-        //     let file = File::create(&path)?;
-        //     serde_json::to_writer_pretty(file, &items)?;
-        //
-        //     println!("Successfully serialized items to {:?}", path);
-        // }
-        // items is Vec<serde_json::Value> I'm trying to map properties (sometimes nested) into
-        // Option<Strings>
-
-        // TODO: get persons
-
-        let work: Vec<Data> = items
-            .iter()
-            .map(|jv| {
-                let fields = jv.get("fields").unwrap();
-                Data::Work(Work {
-                    source: SourceConfig::AzureDevops(self.org.clone()),
-                    id: get_prop(jv, "id").unwrap_or("".to_owned()),
-                    version: get_prop(jv, "rev"),
-                    url: get_prop(jv, "url"),
-                    project: get_prop(jv, "System.Project").unwrap_or("".to_owned()),
-                    title: get_prop(fields, "System.Title").unwrap_or("".to_owned()),
-                    description: get_prop(fields, "System.Description"),
-                    created: get_prop(fields, "System.CreatedDate"),
-                    created_by_id: get_nested_prop(fields, &["System.CreatedBy", "id"]),
-                    assigned_to_id: get_nested_prop(fields, &["System.AssignedTo", "id"]),
-                    column: get_prop(fields, "System.BoardColumn"),
-                    modified: get_prop(fields, "System.ChangedDate"),
-                    state: get_prop(fields, "System.State"),
-                    work_type: get_prop(fields, "System.WorkItemType").unwrap_or("".to_owned()),
-                    parent_id: get_prop(fields, "System.Parent"),
-                })
-            })
-            .collect();
-        Ok(work)
+        // TODO: get persons?
+        Ok(items)
     }
 }

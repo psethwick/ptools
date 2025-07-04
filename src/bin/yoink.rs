@@ -1,10 +1,13 @@
+use std::fs::File;
+
 use anyhow::Result;
 use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use yoink_rs::azure_devops::AzureDevops;
-use yoink_rs::config::{from_config, load_config};
+use yoink_rs::config::{load_config, source_from_config};
 use yoink_rs::data::Data;
 use yoink_rs::source::Source;
+use yoink_rs::storage::get_data_path;
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -53,10 +56,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let futures = config
                 .sources
                 .into_iter()
-                .flat_map(|s| from_config(s).map(|s| s.sync(&client)));
+                .flat_map(|s| source_from_config(s).map(|s| s.sync(&client)));
 
             let results: Vec<Result<Vec<Data>>> = join_all(futures).await;
-            let _data: Vec<Data> = results
+            let data: Vec<Data> = results
                 .into_iter()
                 .flat_map(|rvd| match rvd {
                     Ok(vd) => Some(vd),
@@ -67,6 +70,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .flatten()
                 .collect();
+
+            if let Some(path) = get_data_path("data.json") {
+                if let Some(parent_dir) = path.parent() {
+                    std::fs::create_dir_all(parent_dir)?;
+                }
+
+                let file = File::create(&path)?;
+                serde_json::to_writer_pretty(file, &data)?;
+                println!("Successfully serialized items to {path:?}");
+            }
         }
     }
 
