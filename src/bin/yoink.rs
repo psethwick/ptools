@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use yoink_rs::azure_devops::AzureDevops;
-use yoink_rs::config::{load_config, source_from_config};
+use yoink_rs::config::Config;
 use yoink_rs::data::Data;
 use yoink_rs::source::Source;
 use yoink_rs::storage::get_data_path;
@@ -51,12 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .delete()?,
         },
         Root::Sync => {
-            let config = load_config()?;
+            let config = Config::load()?;
             let client = reqwest::Client::new();
-            let futures = config
-                .sources
-                .into_iter()
-                .flat_map(|s| source_from_config(s).map(|s| s.sync(&client)));
+            let futures = config.sources().into_iter().map(|s| s.sync(&client));
 
             let results: Vec<Result<Vec<Data>>> = join_all(futures).await;
             let data: Vec<Data> = results

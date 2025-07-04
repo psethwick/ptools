@@ -1,4 +1,4 @@
-use crate::config::{SourceConfig, load_config};
+use crate::config::{Config, SourceConfig};
 use crate::data::{Data, Work};
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
@@ -222,7 +222,7 @@ impl Source for AzureDevops {
     fn add(&self) -> anyhow::Result<()> {
         match self.store_password(&self.pat) {
             Ok(()) => {
-                let mut config = load_config()?;
+                let mut config = Config::load()?;
                 config.add_source(SourceConfig::AzureDevops(self.org.clone()))?;
                 Ok(())
             }
@@ -233,7 +233,7 @@ impl Source for AzureDevops {
     fn delete(&self) -> anyhow::Result<()> {
         match self.delete_password() {
             Ok(()) => {
-                let mut config = load_config()?;
+                let mut config = Config::load()?;
                 config.remove_source(&SourceConfig::AzureDevops(self.org.clone()))?;
                 Ok(())
             }
