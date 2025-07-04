@@ -26,12 +26,12 @@ enum Root {
 
 #[derive(Debug, Subcommand)]
 enum AddCommands {
-    AzureDevopsOrg { org: String, pat: String },
+    AzureDevops { org: String, pat: String },
 }
 
 #[derive(Debug, Subcommand)]
 enum DeleteCommands {
-    AzureDevopsOrg { org: String },
+    AzureDevops { org: String },
 }
 
 #[tokio::main]
@@ -39,10 +39,10 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
     match args.command {
         Root::Add(a) => match a {
-            AddCommands::AzureDevopsOrg { org, pat } => AzureDevops { org, pat }.add()?,
+            AddCommands::AzureDevops { org, pat } => AzureDevops { org, pat }.add()?,
         },
         Root::Delete(d) => match d {
-            DeleteCommands::AzureDevopsOrg { org } => AzureDevops {
+            DeleteCommands::AzureDevops { org } => AzureDevops {
                 org,
                 pat: "".to_owned(),
             }
