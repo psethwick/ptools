@@ -30,7 +30,7 @@ impl SourceConfig {
 
     pub fn get_filename(&self) -> String {
         match self {
-            SourceConfig::AzureDevops(org) => format!("ado-{org}.json"),
+            SourceConfig::AzureDevops(org) => format!("ado-{org}"),
         }
     }
 }

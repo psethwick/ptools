@@ -1,5 +1,5 @@
 use crate::config::SourceConfig;
-use crate::source::SERVICE_NAME;
+use crate::source::{self, SERVICE_NAME};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -61,6 +61,7 @@ impl SourceData {
 
         Ok(SourceData {
             // TODO: should sourceconfig own this?
+            // let's keep it here at least until we get to parquet
             source,
             work,
             people: vec![],
@@ -68,15 +69,16 @@ impl SourceData {
     }
 
     pub fn save(&self) -> Result<()> {
-        if let Some(path) = get_data_path("work", &format!("{}.json", self.source.get_filename())) {
-            if let Some(parent_dir) = path.parent() {
-                std::fs::create_dir_all(parent_dir)?;
-            }
-
-            let file = File::create(&path)?;
-            to_writer_pretty(file, &self.work)?;
-            println!("Successfully serialized items to {path:?}");
+        let filename = self.source.get_filename();
+        let path = get_data_path("work", &format!("{}.json", self.source.get_filename()))
+            .ok_or(anyhow!(format!("{filename} couldn't be opened")))?;
+        if let Some(parent_dir) = path.parent() {
+            std::fs::create_dir_all(parent_dir)?;
         }
+
+        let file = File::create(&path)?;
+        to_writer_pretty(file, &self.work)?;
+        println!("Successfully serialized items to {path:?}");
         // TODO: serialize people, etc to other folders
         // we want lake-style data, schema per folder
         Ok(())
