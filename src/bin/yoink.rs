@@ -17,19 +17,19 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Root {
     #[command(subcommand)]
-    Add(AddCommands),
+    Add(Add),
     #[command(subcommand)]
-    Delete(DeleteCommands),
+    Delete(Delete),
     Sync,
 }
 
 #[derive(Debug, Subcommand)]
-enum AddCommands {
+enum Add {
     AzureDevops { org: String, pat: String },
 }
 
 #[derive(Debug, Subcommand)]
-enum DeleteCommands {
+enum Delete {
     AzureDevops { org: String },
 }
 
@@ -38,10 +38,10 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
     match args.command {
         Root::Add(a) => match a {
-            AddCommands::AzureDevops { org, pat } => AzureDevops { org, pat }.add()?,
+            Add::AzureDevops { org, pat } => AzureDevops { org, pat }.add()?,
         },
         Root::Delete(d) => match d {
-            DeleteCommands::AzureDevops { org } => AzureDevops {
+            Delete::AzureDevops { org } => AzureDevops {
                 org,
                 pat: "".to_owned(),
             }

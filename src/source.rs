@@ -1,10 +1,10 @@
 use crate::{config::SourceConfig, data::SourceData};
-use anyhow::Error;
+use anyhow::Result;
 use async_trait::async_trait;
 use keyring::Entry;
 use reqwest::Client;
 
-const SERVICE_NAME: &str = "yoink";
+pub const SERVICE_NAME: &str = "yoink";
 
 #[async_trait]
 pub trait Source {
@@ -13,7 +13,7 @@ pub trait Source {
     fn name(&self) -> String;
     fn add(&self) -> anyhow::Result<()>;
     fn delete(&self) -> anyhow::Result<()>;
-    async fn sync(self, client: &Client) -> Result<SourceData, Error>;
+    async fn sync(self, client: &Client) -> Result<SourceData>;
 
     fn store_password(&self, password: &str) -> Result<(), anyhow::Error> {
         let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", Self::kind(), self.name()))?;
@@ -21,13 +21,8 @@ pub trait Source {
         Ok(())
     }
 
-    fn delete_password(&self) -> Result<(), anyhow::Error> {
+    fn delete_password(&self) -> Result<()> {
         let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", Self::kind(), self.name()))?;
         Ok(entry.delete_credential()?)
     }
-}
-
-pub fn get_password(kind: &str, name: &str) -> Result<String, anyhow::Error> {
-    let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
-    Ok(entry.get_password()?)
 }

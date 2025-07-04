@@ -1,7 +1,6 @@
-use crate::config::Config;
 use crate::config::SourceConfig;
-use crate::source::Source;
-use anyhow::{Ok, Result, anyhow};
+use crate::source::SERVICE_NAME;
+use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::to_writer_pretty;
@@ -41,20 +40,35 @@ pub struct SourceData {
     // Event?
 }
 
+pub fn get_data_path(folder: &str, name: &str) -> Option<PathBuf> {
+    dirs::data_dir().map(|mut path| {
+        path.push(SERVICE_NAME);
+        path.push(folder);
+        path.push(name);
+        path
+    })
+}
+
 impl SourceData {
-    fn get_data_path(folder: &str, name: &str) -> Option<PathBuf> {
-        dirs::data_dir().map(|mut path| {
-            path.push("yoink");
-            path.push(folder);
-            path.push(name);
-            path
+    pub fn load(source: SourceConfig) -> Result<Self> {
+        let filename = source.get_filename();
+        let work_path = get_data_path("work", &format!("{}.json", &filename))
+            .ok_or(anyhow!(format!("{filename} couldn't be opened")))?;
+
+        let file = File::open(work_path)?;
+        let reader = BufReader::new(file);
+        let work = serde_json::from_reader(reader)?;
+
+        Ok(SourceData {
+            // TODO: should sourceconfig own this?
+            source,
+            work,
+            people: vec![],
         })
     }
 
     pub fn save(&self) -> Result<()> {
-        if let Some(path) =
-            Self::get_data_path("work", &format!("{}.json", self.source.get_filename()))
-        {
+        if let Some(path) = get_data_path("work", &format!("{}.json", self.source.get_filename())) {
             if let Some(parent_dir) = path.parent() {
                 std::fs::create_dir_all(parent_dir)?;
             }
@@ -66,26 +80,5 @@ impl SourceData {
         // TODO: serialize people, etc to other folders
         // we want lake-style data, schema per folder
         Ok(())
-    }
-
-    pub fn load() -> Result<Vec<SourceData>> {
-        let config = Config::load()?;
-
-        config
-            .sources()
-            .into_iter()
-            .map(|s| {
-                let filename = format!("{}.json", s.source_config().get_filename());
-                match Self::get_data_path("work", &filename) {
-                    Some(path) => {
-                        let file = File::open(path)?;
-                        let reader = BufReader::new(file);
-
-                        Ok(serde_json::from_reader(reader)?)
-                    }
-                    None => Result::Err(anyhow!("can't read {filename}")),
-                }
-            })
-            .collect()
     }
 }

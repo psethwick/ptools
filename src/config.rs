@@ -1,15 +1,19 @@
-use crate::{
-    azure_devops::AzureDevops,
-    source::{Source, get_password},
-};
+use crate::source::SERVICE_NAME;
+use crate::{azure_devops::AzureDevops, source::Source};
 use anyhow::Result;
 use anyhow::{Error, Ok};
+use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum SourceConfig {
     AzureDevops(String), // organisation name
+}
+
+pub fn get_password(kind: &str, name: &str) -> Result<String, anyhow::Error> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
+    Ok(entry.get_password()?)
 }
 
 impl SourceConfig {
@@ -26,7 +30,7 @@ impl SourceConfig {
 
     pub fn get_filename(&self) -> String {
         match self {
-            SourceConfig::AzureDevops(org) => format!("ado-{org}"),
+            SourceConfig::AzureDevops(org) => format!("ado-{org}.json"),
         }
     }
 }
@@ -42,7 +46,7 @@ pub struct Config {
 
 fn get_config_path() -> Option<PathBuf> {
     dirs::config_dir().map(|mut path| {
-        path.push("yoink");
+        path.push(SERVICE_NAME);
         path.push("config.toml");
         path
     })
@@ -60,7 +64,7 @@ impl Config {
         Ok(Config::default())
     }
 
-    pub fn save(&self) -> Result<(), anyhow::Error> {
+    fn save(&self) -> Result<(), anyhow::Error> {
         if let Some(config_path) = get_config_path() {
             if let Some(parent) = config_path.parent() {
                 fs::create_dir_all(parent)?;
