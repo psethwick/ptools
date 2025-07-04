@@ -1,5 +1,5 @@
 use crate::config::{Config, SourceConfig};
-use crate::data::{Data, Work};
+use crate::data::{SourceData, Work};
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
@@ -66,7 +66,7 @@ async fn process_project(
     org: &str,
     pat: &str,
     project: &Value,
-) -> Result<Vec<Data>> {
+) -> Result<Vec<Work>> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
@@ -113,7 +113,7 @@ async fn process_project(
         .unwrap_or_else(Vec::new);
 
     if work_item_ids.is_empty() {
-        return Ok(Vec::new());
+        return Err(anyhow!("no work found??"));
     }
 
     let field_names = [
@@ -179,28 +179,27 @@ async fn process_project(
         }
     }
 
-    Ok(items
+    let work: Vec<_> = items
         .iter()
-        .map(|az| {
-            Data::Work(Work {
-                source: SourceConfig::AzureDevops(org.to_string()),
-                id: az.id.to_string(),
-                version: Some(az.rev.to_string()),
-                url: Some(az.url.clone()),
-                project: az.fields.project.clone(),
-                title: az.fields.title.clone(),
-                description: az.fields.description.clone(),
-                created: az.fields.created_date,
-                created_by_id: az.fields.created_by.as_ref().map(|cb| cb.id.to_string()),
-                assigned_to_id: az.fields.assigned_to.as_ref().map(|at| at.id.to_string()),
-                column: az.fields.column.clone(),
-                modified: az.fields.changed_date,
-                state: az.fields.state.clone(),
-                work_type: az.fields.item_type.clone(),
-                parent_id: az.fields.parent_id.map(|pi| pi.to_string()),
-            })
+        .map(|az| Work {
+            id: az.id.to_string(),
+            version: Some(az.rev.to_string()),
+            url: Some(az.url.clone()),
+            project: az.fields.project.clone(),
+            title: az.fields.title.clone(),
+            description: az.fields.description.clone(),
+            created: az.fields.created_date,
+            created_by_id: az.fields.created_by.as_ref().map(|cb| cb.id.to_string()),
+            assigned_to_id: az.fields.assigned_to.as_ref().map(|at| at.id.to_string()),
+            column: az.fields.column.clone(),
+            modified: az.fields.changed_date,
+            state: az.fields.state.clone(),
+            work_type: az.fields.item_type.clone(),
+            parent_id: az.fields.parent_id.map(|pi| pi.to_string()),
         })
-        .collect())
+        .collect();
+
+    Ok(work)
 }
 
 #[async_trait]
@@ -241,7 +240,7 @@ impl Source for AzureDevops {
         }
     }
 
-    async fn sync(self, client: &Client) -> Result<Vec<Data>, Error> {
+    async fn sync(self, client: &Client) -> Result<SourceData, Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -273,16 +272,20 @@ impl Source for AzureDevops {
 
         let project_results = join_all(project_tasks).await;
 
-        let mut items = Vec::new();
+        let mut work = Vec::new();
         for result in project_results {
             match result {
-                Ok(Ok(project_items)) => items.extend(project_items),
+                Ok(Ok(project_items)) => work.extend(project_items),
                 Ok(Err(e)) => eprintln!("Project processing error: {e}"),
                 Err(e) => eprintln!("Task join error: {e}"),
             }
         }
 
         // TODO: get persons?
-        Ok(items)
+        Ok(SourceData {
+            source: self.source_config(),
+            work,
+            people: vec![],
+        })
     }
 }

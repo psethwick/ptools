@@ -4,13 +4,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Work {
-    pub source: SourceConfig,
     pub project: String,
     pub id: String,
-    pub parent_id: Option<String>,
     pub title: String,
-    pub work_type: String,
+    pub parent_id: Option<String>,
     pub description: Option<String>,
+    pub work_type: String,
     pub version: Option<String>,
     pub state: Option<String>,
     pub created_by_id: Option<String>,
@@ -23,17 +22,15 @@ pub struct Work {
 
 #[derive(Serialize, Deserialize)]
 pub struct Person {
-    source: SourceConfig,
     id: String,
     name: String,
 }
 
 #[derive(Serialize, Deserialize)]
-#[allow(clippy::large_enum_variant)] // most of these will probably be Work
-pub enum Data {
-    Work(Work),
-    Person(Person),
+pub struct SourceData {
+    pub source: SourceConfig,
+    pub work: Vec<Work>,
+    pub people: Vec<Person>,
     // Pull Requests?
-    // Person?
     // Event?
 }

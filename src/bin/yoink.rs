@@ -3,7 +3,7 @@ use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use yoink_rs::azure_devops::AzureDevops;
 use yoink_rs::config::Config;
-use yoink_rs::data::Data;
+use yoink_rs::data::SourceData;
 use yoink_rs::source::Source;
 use yoink_rs::storage::save;
 
@@ -53,8 +53,8 @@ async fn main() -> Result<()> {
             let client = reqwest::Client::new();
             let futures = config.sources().into_iter().map(|s| s.sync(&client));
 
-            let results: Vec<Result<Vec<Data>>> = join_all(futures).await;
-            let data: Vec<Data> = results
+            let results: Vec<Result<SourceData>> = join_all(futures).await;
+            let data: Vec<SourceData> = results
                 .into_iter()
                 .flat_map(|rvd| match rvd {
                     Ok(vd) => Some(vd),
@@ -63,10 +63,9 @@ async fn main() -> Result<()> {
                         None
                     }
                 })
-                .flatten()
                 .collect();
 
-            save(&data, "data.json")?;
+            save(&data)?;
         }
     }
 

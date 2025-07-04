@@ -12,6 +12,25 @@ pub enum SourceConfig {
     AzureDevops(String), // organisation name
 }
 
+impl SourceConfig {
+    fn get_source(&self) -> Result<impl Source> {
+        match self {
+            SourceConfig::AzureDevops(org) => {
+                get_password(&AzureDevops::kind(), org).map(|pat| AzureDevops {
+                    org: org.to_owned(),
+                    pat,
+                })
+            }
+        }
+    }
+
+    pub fn get_filename(&self) -> String {
+        match self {
+            SourceConfig::AzureDevops(org) => format!("ado-{org}"),
+        }
+    }
+}
+
 pub enum Sources {
     AzureDevops(AzureDevops),
 }
@@ -19,17 +38,6 @@ pub enum Sources {
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
     sources: Vec<SourceConfig>,
-}
-
-fn source_from_config(sc: &SourceConfig) -> Result<impl Source> {
-    match sc {
-        SourceConfig::AzureDevops(org) => {
-            get_password(&AzureDevops::kind(), org).map(|pat| AzureDevops {
-                org: org.to_owned(),
-                pat,
-            })
-        }
-    }
 }
 
 fn get_config_path() -> Option<PathBuf> {
@@ -64,10 +72,7 @@ impl Config {
     }
 
     pub fn sources(&self) -> Vec<impl Source> {
-        self.sources
-            .iter()
-            .flat_map(|s| source_from_config(s))
-            .collect()
+        self.sources.iter().flat_map(|s| s.get_source()).collect()
     }
 
     pub fn add_source(&mut self, new_source: SourceConfig) -> anyhow::Result<()> {

@@ -1,4 +1,4 @@
-use crate::{config::SourceConfig, data::Data};
+use crate::{config::SourceConfig, data::SourceData};
 use anyhow::Error;
 use async_trait::async_trait;
 use keyring::Entry;
@@ -13,7 +13,7 @@ pub trait Source {
     fn name(&self) -> String;
     fn add(&self) -> anyhow::Result<()>;
     fn delete(&self) -> anyhow::Result<()>;
-    async fn sync(self, client: &Client) -> Result<Vec<Data>, Error>;
+    async fn sync(self, client: &Client) -> Result<SourceData, Error>;
 
     fn store_password(&self, password: &str) -> Result<(), anyhow::Error> {
         let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", Self::kind(), self.name()))?;
