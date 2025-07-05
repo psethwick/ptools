@@ -1,4 +1,4 @@
-use crate::config::{Config, SourceConfig};
+use crate::config::SourceConfig;
 use crate::data::{SourceData, Work};
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
@@ -156,11 +156,6 @@ async fn process_project(
                     .await?
                     .value;
 
-                // let batch_items = batch_response["value"]
-                //     .as_array()
-                //     .cloned()
-                //     .unwrap_or_else(Vec::new);
-
                 Ok::<Vec<AzureDevOpsWorkItem>, Error>(batch_response)
             })
         })
@@ -204,39 +199,14 @@ async fn process_project(
 
 #[async_trait]
 impl Source for AzureDevops {
-    // TODO: I wonder if kind() is necessary
-    // or name()
-    fn kind() -> String {
-        "azure_devops".to_owned()
-    }
-
     fn source_config(&self) -> SourceConfig {
         SourceConfig::AzureDevops(self.org.clone())
     }
 
-    fn name(&self) -> String {
-        self.org.clone()
-    }
-
     fn add(&self) -> anyhow::Result<()> {
-        match self.store_password(&self.pat) {
-            Ok(()) => {
-                let mut config = Config::load()?;
-                config.add_source(SourceConfig::AzureDevops(self.org.clone()))?;
-                Ok(())
-            }
+        match self.source_config().store_password(&self.pat) {
+            Ok(()) => Ok(()),
             Err(e) => Err(anyhow!("Failed to store PAT: {}", e)),
-        }
-    }
-
-    fn delete(&self) -> anyhow::Result<()> {
-        match self.delete_password() {
-            Ok(()) => {
-                let mut config = Config::load()?;
-                config.remove_source(&SourceConfig::AzureDevops(self.org.clone()))?;
-                Ok(())
-            }
-            Err(e) => Err(anyhow!("Failed to delete PAT: {}", e)),
         }
     }
 

@@ -11,27 +11,46 @@ pub enum SourceConfig {
     AzureDevops(String), // organisation name
 }
 
-pub fn get_password(kind: &str, name: &str) -> Result<String, anyhow::Error> {
-    let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
-    Ok(entry.get_password()?)
-}
-
 impl SourceConfig {
+    fn kind(&self) -> String {
+        match self {
+            SourceConfig::AzureDevops(_) => "azure_devops".to_owned(),
+        }
+    }
+
+    fn name(&self) -> String {
+        match self {
+            SourceConfig::AzureDevops(org) => org.to_owned(),
+        }
+    }
+
     fn get_source(&self) -> Result<impl Source> {
         match self {
-            SourceConfig::AzureDevops(org) => {
-                get_password(&AzureDevops::kind(), org).map(|pat| AzureDevops {
-                    org: org.to_owned(),
-                    pat,
-                })
-            }
+            SourceConfig::AzureDevops(org) => self.get_password().map(|pat| AzureDevops {
+                org: org.to_owned(),
+                pat,
+            }),
         }
     }
 
     pub fn get_filename(&self) -> String {
-        match self {
-            SourceConfig::AzureDevops(org) => format!("ado-{org}"),
-        }
+        format!("{}-{}", self.kind(), self.name())
+    }
+
+    fn get_password(&self) -> Result<String, anyhow::Error> {
+        let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind(), self.name()))?;
+        Ok(entry.get_password()?)
+    }
+
+    pub fn store_password(&self, password: &str) -> Result<()> {
+        let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind(), self.name()))?;
+        entry.set_password(password)?;
+        Ok(())
+    }
+
+    pub fn delete_password(&self) -> Result<()> {
+        let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind(), self.name()))?;
+        Ok(entry.delete_credential()?)
     }
 }
 
@@ -79,9 +98,11 @@ impl Config {
         self.sources.iter().flat_map(|s| s.get_source()).collect()
     }
 
-    pub fn add_source(&mut self, new_source: SourceConfig) -> Result<()> {
-        if !self.sources.contains(&new_source) {
-            self.sources.push(new_source);
+    pub fn add_source(&mut self, new_source: impl Source) -> Result<()> {
+        new_source.add()?;
+        let source_config = new_source.source_config();
+        if !self.sources.contains(&source_config) {
+            self.sources.push(source_config);
         }
         self.save()?;
         Ok(())
@@ -90,6 +111,7 @@ impl Config {
     pub fn remove_source(&mut self, sc_to_remove: &SourceConfig) -> Result<()> {
         self.sources.retain(|s| s != sc_to_remove);
         self.save()?;
+        sc_to_remove.delete_password()?;
         Ok(())
     }
 }

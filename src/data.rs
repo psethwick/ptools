@@ -1,5 +1,5 @@
 use crate::config::SourceConfig;
-use crate::source::{self, SERVICE_NAME};
+use crate::source::SERVICE_NAME;
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

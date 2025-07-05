@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use yoink_rs::azure_devops::AzureDevops;
-use yoink_rs::config::Config;
+use yoink_rs::config::{Config, SourceConfig};
 use yoink_rs::data::SourceData;
 use yoink_rs::source::Source;
 
@@ -36,20 +36,18 @@ enum Delete {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
+    let mut config = Config::load()?;
     match args.command {
         Root::Add(a) => match a {
-            Add::AzureDevops { org, pat } => AzureDevops { org, pat }.add()?,
+            Add::AzureDevops { org, pat } => config.add_source(AzureDevops { org, pat })?,
         },
         Root::Delete(d) => match d {
-            Delete::AzureDevops { org } => AzureDevops {
-                org,
-                pat: "".to_owned(),
-            }
-            .delete()?,
+            Delete::AzureDevops { org } => config.remove_source(&SourceConfig::AzureDevops(org))?,
         },
         Root::Sync => {
-            let config = Config::load()?;
             let client = reqwest::Client::new();
+            // maybe Config could also have a sync method that syncs all
+            // perhaps instead of parquet I should have a db
             let futures = config.sources().into_iter().map(|s| s.sync(&client));
 
             let results: Vec<Result<SourceData>> = join_all(futures).await;
