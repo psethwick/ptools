@@ -36,9 +36,9 @@ pub struct SourceData {
     pub source: SourceConfig,
     pub work: Vec<Work>,
     pub people: Vec<Person>,
-    // Pull Requests?
-    // Event?
 }
+// TODO: Pull Requests?
+// Event?
 
 pub fn get_data_path(folder: &str, name: &str) -> Option<PathBuf> {
     dirs::data_dir().map(|mut path| {
