@@ -85,6 +85,7 @@ async fn main() -> Result<()> {
                 })
                 .collect();
 
+            let mut tx = pool.begin().await?;
             for d in data {
                 for work_item in d.work {
                     sqlx::query(
@@ -105,10 +106,11 @@ async fn main() -> Result<()> {
                     .bind(work_item.created)
                     .bind(work_item.modified)
                     .bind(work_item.url)
-                    .execute(&pool)
+                    .execute(&mut *tx)
                     .await?;
                 }
             }
+            tx.commit().await?;
         }
         Root::List(l) => match l {
             List::Work => {
