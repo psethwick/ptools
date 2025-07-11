@@ -1,13 +1,11 @@
 use crate::config::SourceConfig;
 use crate::source::SERVICE_NAME;
-use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::to_writer_pretty;
-use std::io::BufReader;
-use std::{fs::File, path::PathBuf};
+use sqlx::FromRow;
+use std::path::PathBuf;
 
-#[derive(Serialize, Deserialize)]
+#[derive(FromRow, Debug, Serialize, Deserialize)]
 pub struct Work {
     pub project: String,
     pub id: String,
@@ -47,40 +45,4 @@ pub fn get_data_path(folder: &str, name: &str) -> Option<PathBuf> {
         path.push(name);
         path
     })
-}
-
-impl SourceData {
-    pub fn load(source: SourceConfig) -> Result<Self> {
-        let filename = source.get_filename();
-        let work_path = get_data_path("work", &format!("{}.json", &filename))
-            .ok_or(anyhow!(format!("{filename} couldn't be opened")))?;
-
-        let file = File::open(work_path)?;
-        let reader = BufReader::new(file);
-        let work = serde_json::from_reader(reader)?;
-
-        Ok(SourceData {
-            // TODO: should sourceconfig own this?
-            // let's keep it here at least until we get to parquet
-            source,
-            work,
-            people: vec![],
-        })
-    }
-
-    pub fn save(&self) -> Result<()> {
-        let filename = self.source.get_filename();
-        let path = get_data_path("work", &format!("{}.json", self.source.get_filename()))
-            .ok_or(anyhow!(format!("{filename} couldn't be opened")))?;
-        if let Some(parent_dir) = path.parent() {
-            std::fs::create_dir_all(parent_dir)?;
-        }
-
-        let file = File::create(&path)?;
-        to_writer_pretty(file, &self.work)?;
-        println!("Successfully serialized items to {path:?}");
-        // TODO: serialize people, etc to other folders
-        // we want lake-style data, schema per folder
-        Ok(())
-    }
 }
