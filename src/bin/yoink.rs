@@ -1,12 +1,12 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
-use sqlx::{migrate, SqlitePool};
+use sqlx::{SqlitePool, migrate};
 use std::path::PathBuf;
 use yoink_rs::azure_devops::AzureDevops;
 use yoink_rs::config::{Config, SourceConfig};
 use yoink_rs::data::{SourceData, Work};
-use yoink_rs::source::{Source, SERVICE_NAME};
+use yoink_rs::source::{SERVICE_NAME, Source};
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -59,7 +59,8 @@ async fn main() -> Result<()> {
     let data_dir = get_data_dir()?;
     std::fs::create_dir_all(&data_dir)?;
     let db_path = data_dir.join("yoink.db");
-    let pool = SqlitePool::connect(&format!("sqlite:{}?mode=rwc", db_path.to_str().unwrap())).await?;
+    let pool =
+        SqlitePool::connect(&format!("sqlite:{}?mode=rwc", db_path.to_str().unwrap())).await?;
     migrate!("./migrations").run(&pool).await?;
 
     match args.command {
@@ -87,13 +88,15 @@ async fn main() -> Result<()> {
 
             let mut tx = pool.begin().await?;
             for d in data {
+                let source = d.source.get_filename();
                 for work_item in d.work {
                     sqlx::query(
-                        "INSERT OR REPLACE INTO work (project, id, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT OR REPLACE INTO work (source, id, project, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
-                    .bind(work_item.project)
+                    .bind(&source)
                     .bind(work_item.id)
+                    .bind(work_item.project)
                     .bind(work_item.title)
                     .bind(work_item.parent_id)
                     .bind(work_item.description)
@@ -114,7 +117,9 @@ async fn main() -> Result<()> {
         }
         Root::List(l) => match l {
             List::Work => {
-                let work_items: Vec<Work> = sqlx::query_as("SELECT * FROM work").fetch_all(&pool).await?;
+                let work_items: Vec<Work> = sqlx::query_as("SELECT * FROM work")
+                    .fetch_all(&pool)
+                    .await?;
                 for item in work_items {
                     println!("{:#?}", item);
                 }
