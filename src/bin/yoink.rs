@@ -3,10 +3,11 @@ use clap::{self, Parser, Subcommand};
 use futures::future::join_all;
 use sqlx::{SqlitePool, migrate};
 use std::path::PathBuf;
+use yoink_rs::SERVICE_NAME;
 use yoink_rs::azure_devops::AzureDevops;
 use yoink_rs::config::{Config, SourceConfig};
-use yoink_rs::data::{SourceData, Work};
-use yoink_rs::source::{SERVICE_NAME, Source};
+use yoink_rs::data::Work;
+use yoink_rs::source::Source;
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -72,53 +73,18 @@ async fn main() -> Result<()> {
         },
         Root::Sync => {
             let client = reqwest::Client::new();
-            let futures = config.sources().into_iter().map(|s| s.sync(&client));
-
-            let results: Vec<Result<SourceData>> = join_all(futures).await;
-            let data: Vec<SourceData> = results
+            let futures = config
+                .sources()
                 .into_iter()
-                .flat_map(|rvd| match rvd {
-                    Ok(vd) => Some(vd),
-                    Err(e) => {
-                        eprintln!("Sync failed: {e}");
-                        None
-                    }
-                })
-                .collect();
+                .map(|s| s.sync(&client, pool.clone()));
 
-            // TODO: I think we'll pass a tx or the pool to the sync method
-            // allows more shenanigans than I'd like (e.g. any source can do anything)
-            // however, it means as results come in they can go in and subsequently be dropped
-            // instead of gathering _everything_ into memory first as it currently is
-            let mut tx = pool.begin().await?;
-            for d in data {
-                // TODO: should source get a table
-                let source = d.source.get_filename();
-                for work_item in d.work {
-                    sqlx::query(
-                        "INSERT OR REPLACE INTO work (source, id, project, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    )
-                    .bind(&source)
-                    .bind(work_item.id)
-                    .bind(work_item.project)
-                    .bind(work_item.title)
-                    .bind(work_item.parent_id)
-                    .bind(work_item.description)
-                    .bind(work_item.work_type)
-                    .bind(work_item.version)
-                    .bind(work_item.state)
-                    .bind(work_item.created_by_id)
-                    .bind(work_item.assigned_to_id)
-                    .bind(work_item.column)
-                    .bind(work_item.created)
-                    .bind(work_item.modified)
-                    .bind(work_item.url)
-                    .execute(&mut *tx)
-                    .await?;
+            let results: Vec<Result<()>> = join_all(futures).await;
+
+            for result in results {
+                if let Err(e) = result {
+                    eprintln!("Sync failed: {e}");
                 }
             }
-            tx.commit().await?;
         }
         Root::List(l) => match l {
             List::Work => {
@@ -126,7 +92,7 @@ async fn main() -> Result<()> {
                     .fetch_all(&pool)
                     .await?;
                 for item in work_items {
-                    println!("{:#?}", item);
+                    println!("{item:#?}");
                 }
             }
         },

@@ -1,8 +1,9 @@
+use crate::SERVICE_NAME;
 use crate::config::SourceConfig;
-use crate::source::SERVICE_NAME;
+use anyhow::{Ok, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use sqlx::{Executor, FromRow, Sqlite};
 use std::path::PathBuf;
 
 #[derive(FromRow, Debug, Serialize, Deserialize)]
@@ -23,10 +24,60 @@ pub struct Work {
     pub url: Option<String>,
 }
 
+impl Work {
+    pub async fn save<'a, E>(&self, executor: E, source: &str) -> Result<()>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query(
+            "INSERT OR REPLACE INTO work (source, id, project, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(source)
+        .bind(&self.id)
+        .bind(&self.project)
+        .bind(&self.title)
+        .bind(&self.parent_id)
+        .bind(&self.description)
+        .bind(&self.work_type)
+        .bind(&self.version)
+        .bind(&self.state)
+        .bind(&self.created_by_id)
+        .bind(&self.assigned_to_id)
+        .bind(&self.column)
+        .bind(self.created)
+        .bind(self.modified)
+        .bind(&self.url)
+        .execute(executor)
+        .await?;
+
+        Ok(())
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Person {
     id: String,
     name: String,
+}
+
+impl Person {
+    pub async fn save<'a, E>(&self, executor: E, source: &str) -> Result<()>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query(
+            "INSERT OR REPLACE INTO person (source, id, name)
+             VALUES (?, ?, ?)",
+        )
+        .bind(source)
+        .bind(&self.id)
+        .bind(&self.name)
+        .execute(executor)
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -37,12 +88,3 @@ pub struct SourceData {
 }
 // TODO: Pull Requests?
 // Event?
-
-pub fn get_data_path(folder: &str, name: &str) -> Option<PathBuf> {
-    dirs::data_dir().map(|mut path| {
-        path.push(SERVICE_NAME);
-        path.push(folder);
-        path.push(name);
-        path
-    })
-}

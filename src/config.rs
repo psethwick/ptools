@@ -1,4 +1,4 @@
-use crate::source::SERVICE_NAME;
+use crate::SERVICE_NAME;
 use crate::{azure_devops::AzureDevops, source::Source};
 use anyhow::Result;
 use anyhow::{Error, Ok};

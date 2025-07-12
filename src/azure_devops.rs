@@ -1,5 +1,5 @@
 use crate::config::SourceConfig;
-use crate::data::{SourceData, Work};
+use crate::data::Work;
 use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
@@ -8,6 +8,7 @@ use futures::future::join_all;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sqlx::{Pool, Sqlite};
 use tokio::task;
 
 pub struct AzureDevops {
@@ -210,7 +211,7 @@ impl Source for AzureDevops {
         }
     }
 
-    async fn sync(self, client: &Client) -> Result<SourceData, Error> {
+    async fn sync(self, client: &Client, pool: Pool<Sqlite>) -> Result<(), Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -251,11 +252,15 @@ impl Source for AzureDevops {
             }
         }
 
+        let mut tx = pool.begin().await?;
+        // TODO: should source get a table
+        let source = self.source_config().get_filename();
+        for work_item in work {
+            work_item.save(&mut *tx, &source).await?
+        }
+        tx.commit().await?;
+
         // TODO: get persons?
-        Ok(SourceData {
-            source: self.source_config(),
-            work,
-            people: vec![],
-        })
+        Ok(())
     }
 }
