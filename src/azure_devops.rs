@@ -8,7 +8,7 @@ use futures::future::join_all;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sqlx::{Pool, Sqlite};
+use sqlx::SqlitePool;
 use tokio::task;
 
 pub struct AzureDevops {
@@ -82,7 +82,7 @@ async fn process_project(
         FROM WorkItems
         WHERE [System.TeamProject] = '{project_name}'
         ORDER BY [System.Id]
-        "#
+        "#,
     );
 
     let wiql_url =
@@ -168,9 +168,11 @@ async fn process_project(
     for result in batch_results {
         match result {
             Ok(Ok(batch_items)) => items.extend(batch_items),
-            Ok(Err(e)) => eprintln!(
-                "Warning: Could not fetch work items batch for project {project_name}: {e}"
-            ),
+            Ok(Err(e)) => {
+                eprintln!(
+                    "Warning: Could not fetch work items batch for project {project_name}: {e}"
+                )
+            }
             Err(e) => eprintln!("Warning: Batch task failed for project {project_name}: {e}"),
         }
     }
@@ -211,7 +213,7 @@ impl Source for AzureDevops {
         }
     }
 
-    async fn sync(self, client: &Client, pool: Pool<Sqlite>) -> Result<(), Error> {
+    async fn sync(self, client: &Client, pool: &SqlitePool) -> Result<(), Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -252,15 +254,13 @@ impl Source for AzureDevops {
             }
         }
 
-        let mut tx = pool.begin().await?;
-        // TODO: should source get a table
         let source = self.source_config().get_filename();
+        let mut tx = pool.begin().await?;
         for work_item in work {
-            work_item.save(&mut *tx, &source).await?
+            work_item.save(&mut *tx, &source).await?;
         }
         tx.commit().await?;
 
-        // TODO: get persons?
         Ok(())
     }
 }

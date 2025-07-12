@@ -73,10 +73,7 @@ async fn main() -> Result<()> {
         },
         Root::Sync => {
             let client = reqwest::Client::new();
-            let futures = config
-                .sources()
-                .into_iter()
-                .map(|s| s.sync(&client, pool.clone()));
+            let futures = config.sources().into_iter().map(|s| s.sync(&client, &pool));
 
             let results: Vec<Result<()>> = join_all(futures).await;
 
