@@ -1,10 +1,8 @@
-use crate::SERVICE_NAME;
 use crate::config::SourceConfig;
 use anyhow::{Ok, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{Executor, FromRow, Sqlite};
-use std::path::PathBuf;
 
 #[derive(FromRow, Debug, Serialize, Deserialize)]
 pub struct Work {
@@ -80,11 +78,5 @@ impl Person {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct SourceData {
-    pub source: SourceConfig,
-    pub work: Vec<Work>,
-    pub people: Vec<Person>,
-}
 // TODO: Pull Requests?
 // Event?
