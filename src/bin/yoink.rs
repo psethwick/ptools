@@ -86,8 +86,13 @@ async fn main() -> Result<()> {
                 })
                 .collect();
 
+            // TODO: I think we'll pass a tx or the pool to the sync method
+            // allows more shenanigans than I'd like (e.g. any source can do anything)
+            // however, it means as results come in they can go in and subsequently be dropped
+            // instead of gathering _everything_ into memory first as it currently is
             let mut tx = pool.begin().await?;
             for d in data {
+                // TODO: should source get a table
                 let source = d.source.get_filename();
                 for work_item in d.work {
                     sqlx::query(
