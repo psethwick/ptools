@@ -1,10 +1,11 @@
-use crate::config::SourceConfig;
-use crate::data::Work;
+use crate::data::{Person, Work};
 use crate::source::Source;
+use crate::{config::SourceConfig, data::Data};
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::future::join_all;
+use itertools::Itertools;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -62,12 +63,7 @@ struct AzureDevOpsBatchResponse {
     pub value: Vec<AzureDevOpsWorkItem>,
 }
 
-async fn process_project(
-    client: &Client,
-    org: &str,
-    pat: &str,
-    project: &Value,
-) -> Result<Vec<Work>> {
+async fn process_project(client: &Client, org: &str, pat: &str, project: &Value) -> Result<Data> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
@@ -197,7 +193,21 @@ async fn process_project(
         })
         .collect();
 
-    Ok(work)
+    let people: Vec<Person> = items
+        .iter()
+        .flat_map(|c| {
+            [c.fields.created_by.as_ref(), c.fields.assigned_to.as_ref()]
+                .into_iter()
+                .flatten()
+                .map(|p| Person {
+                    id: p.id.clone(),
+                    name: p.display_name.clone(),
+                })
+        })
+        .unique_by(|p| p.id.clone())
+        .collect();
+
+    Ok(Data { work, people })
 }
 
 #[async_trait]
@@ -246,9 +256,13 @@ impl Source for AzureDevops {
         let project_results = join_all(project_tasks).await;
 
         let mut work = Vec::new();
+        let mut people = Vec::new();
         for result in project_results {
             match result {
-                Ok(Ok(project_items)) => work.extend(project_items),
+                Ok(Ok(project_items)) => {
+                    work.extend(project_items.work);
+                    people.extend(project_items.people);
+                }
                 Ok(Err(e)) => eprintln!("Project processing error: {e}"),
                 Err(e) => eprintln!("Task join error: {e}"),
             }
@@ -258,6 +272,9 @@ impl Source for AzureDevops {
         let mut tx = pool.begin().await?;
         for work_item in work {
             work_item.save(&mut *tx, &source).await?;
+        }
+        for person in people {
+            person.save(&mut *tx, &source).await?;
         }
         tx.commit().await?;
 

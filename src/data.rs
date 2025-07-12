@@ -52,10 +52,10 @@ impl Work {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct Person {
-    id: String,
-    name: String,
+    pub id: String,
+    pub name: String,
 }
 
 impl Person {
@@ -75,6 +75,12 @@ impl Person {
 
         Ok(())
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Data {
+    pub work: Vec<Work>,
+    pub people: Vec<Person>,
 }
 
 // TODO: Pull Requests?
