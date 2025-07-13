@@ -12,6 +12,20 @@ use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use tokio::task;
 
+async fn get_max_modified(
+    pool: &SqlitePool,
+    source: &str,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    let max_modified = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+        r#"SELECT MAX(modified) FROM work WHERE "source" = ?"#,
+    )
+    .bind(source)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(max_modified)
+}
+
 pub struct AzureDevops {
     pub org: String,
     pub pat: String,
@@ -63,7 +77,13 @@ struct AzureDevOpsBatchResponse {
     pub value: Vec<AzureDevOpsWorkItem>,
 }
 
-async fn process_project(client: &Client, org: &str, pat: &str, project: &Value) -> Result<Data> {
+async fn process_project(
+    client: &Client,
+    org: &str,
+    pat: &str,
+    project: &Value,
+    max_modified: Option<DateTime<Utc>>,
+) -> Result<Data> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
@@ -72,11 +92,20 @@ async fn process_project(client: &Client, org: &str, pat: &str, project: &Value)
         .as_str()
         .ok_or_else(|| anyhow!("Project id not found"))?;
 
+    let date_filter = if let Some(max_modified_date) = max_modified {
+        format!(
+            " AND [System.ChangedDate] > '{}'",
+            max_modified_date.format("%Y-%m-%dT%H:%M:%S.%3fZ")
+        )
+    } else {
+        "".to_string()
+    };
+
     let wiql_query = format!(
         r#"
         SELECT [System.Id]
         FROM WorkItems
-        WHERE [System.TeamProject] = '{project_name}'
+        WHERE [System.TeamProject] = '{project_name}'{date_filter}
         ORDER BY [System.Id]
         "#,
     );
@@ -110,7 +139,8 @@ async fn process_project(client: &Client, org: &str, pat: &str, project: &Value)
         .unwrap_or_else(Vec::new);
 
     if work_item_ids.is_empty() {
-        return Err(anyhow!("no work found??"));
+        dbg!("no work found");
+        return Ok(Data::default());
     }
 
     let field_names = [
@@ -224,6 +254,9 @@ impl Source for AzureDevops {
     }
 
     async fn sync(self, client: &Client, pool: &SqlitePool) -> Result<(), Error> {
+        let source = self.source_config().get_filename();
+        let max_modified = get_max_modified(pool, &source).await?;
+
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -249,7 +282,9 @@ impl Source for AzureDevops {
                 let pat = self.pat.clone();
                 let project = project.clone();
 
-                task::spawn(async move { process_project(&client, &org, &pat, &project).await })
+                task::spawn(async move {
+                    process_project(&client, &org, &pat, &project, max_modified).await
+                })
             })
             .collect();
 
@@ -268,7 +303,6 @@ impl Source for AzureDevops {
             }
         }
 
-        let source = self.source_config().get_filename();
         let mut tx = pool.begin().await?;
         for work_item in work {
             work_item.save(&mut *tx, &source).await?;

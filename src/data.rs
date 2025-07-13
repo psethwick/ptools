@@ -77,7 +77,7 @@ impl Person {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct Data {
     pub work: Vec<Work>,
     pub people: Vec<Person>,
