@@ -4,8 +4,8 @@ use sqlx::{SqlitePool, migrate};
 use std::path::PathBuf;
 use tokio::task::JoinSet;
 use yoink_rs::SERVICE_NAME;
-use yoink_rs::data::{SourceConfig, Work, get_sources, remove_source};
-use yoink_rs::source::{Source, new_source};
+use yoink_rs::source::SourceSync;
+use yoink_rs::source::{Source, Work, get_sources, remove_source};
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -65,13 +65,13 @@ async fn main() -> Result<()> {
         Root::Add(a) => match a {
             Add::AzureDevops { org, pat } => {
                 let kind = "azure_devops";
-                new_source(&pool, kind, &org, pat).await?;
+                Source::add_source(&pool, kind, &org, pat).await?;
                 println!("Added source: {kind}-{org}");
             }
         },
         Root::Delete(d) => match d {
             Delete::AzureDevops { org } => {
-                let sc_to_remove = sqlx::query_as::<_, SourceConfig>(
+                let sc_to_remove = sqlx::query_as::<_, Source>(
                     "SELECT id, kind, name FROM source WHERE kind = ? AND name = ?",
                 )
                 .bind("azure_devops")

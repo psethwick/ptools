@@ -1,5 +1,5 @@
-use crate::data::{Data, Person, Work};
-use crate::source::Source;
+use crate::source::SourceSync;
+use crate::source::{Data, Person, Work};
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -224,17 +224,16 @@ async fn process_project(
         });
     }
 
+    let mut tx = pool.begin().await?;
     while let Some(res) = set.join_next().await {
         match res {
             Ok(Ok(data)) => {
-                let mut tx = pool.begin().await?;
                 for work_item in data.work {
                     work_item.save(&mut *tx).await?;
                 }
                 for person in data.people {
                     person.save(&mut *tx).await?;
                 }
-                tx.commit().await?;
             }
             Ok(Err(e)) => {
                 eprintln!(
@@ -244,12 +243,13 @@ async fn process_project(
             Err(e) => eprintln!("Warning: Batch task failed for project {project_name}: {e}"),
         }
     }
+    tx.commit().await?;
 
     Ok(())
 }
 
 #[async_trait]
-impl Source for AzureDevops {
+impl SourceSync for AzureDevops {
     fn source_id(&self) -> i64 {
         self.source_id
     }
