@@ -12,12 +12,14 @@ use tokio::task::JoinSet;
 
 async fn get_max_modified(
     pool: &SqlitePool,
+    project: &str,
     source_id: i64,
 ) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
     let max_modified = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
-        r#"SELECT MAX(modified) FROM work WHERE source_id = ?"#,
+        r#"SELECT MAX(modified) FROM work WHERE source_id = ? and project = ?"#,
     )
     .bind(source_id)
+    .bind(project)
     .fetch_one(pool)
     .await?;
 
@@ -82,12 +84,12 @@ async fn process_project(
     org: &str,
     pat: &str,
     project: &Value,
-    max_modified: Option<DateTime<Utc>>,
     pool: &SqlitePool,
 ) -> Result<()> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
+    let max_modified = get_max_modified(pool, project_name, source_id).await?;
 
     let project_id = project["id"]
         .as_str()
@@ -255,7 +257,7 @@ impl SourceSync for AzureDevops {
     }
 
     async fn sync(&self, client: &Client, pool: &SqlitePool) -> Result<(), Error> {
-        let max_modified = get_max_modified(pool, self.source_id).await?;
+        // let max_modified = get_max_modified(pool, self.source_id).await?;
 
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
@@ -285,16 +287,7 @@ impl SourceSync for AzureDevops {
             let pool = pool.clone();
 
             set.spawn(async move {
-                process_project(
-                    source_id,
-                    &client,
-                    &org,
-                    &pat,
-                    &project,
-                    max_modified,
-                    &pool,
-                )
-                .await
+                process_project(source_id, &client, &org, &pat, &project, &pool).await
             });
         }
 
