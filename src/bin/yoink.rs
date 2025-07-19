@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
         Root::Add(a) => match a {
             Add::AzureDevops { org, pat } => {
                 let kind = "azure_devops";
-                Source::add_source(&pool, kind, &org, pat).await?;
+                Source::add(&pool, kind, &org, pat).await?;
                 println!("Added source: {kind}-{org}");
             }
         },

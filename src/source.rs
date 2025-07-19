@@ -33,12 +33,7 @@ impl Source {
         }
     }
 
-    pub async fn add_source(
-        pool: &SqlitePool,
-        kind: &str,
-        name: &str,
-        password: String,
-    ) -> Result<()> {
+    pub async fn add(pool: &SqlitePool, kind: &str, name: &str, password: String) -> Result<()> {
         let result = sqlx::query("INSERT OR REPLACE INTO source (kind, name) VALUES (?, ?)")
             .bind(kind)
             .bind(name)
