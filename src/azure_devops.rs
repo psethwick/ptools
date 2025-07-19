@@ -1,6 +1,5 @@
-use crate::data::{Person, Work};
+use crate::data::{Data, Person, Work};
 use crate::source::Source;
-use crate::{config::SourceConfig, data::Data};
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -14,12 +13,12 @@ use tokio::task;
 
 async fn get_max_modified(
     pool: &SqlitePool,
-    source: &str,
+    source_id: i64,
 ) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
     let max_modified = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
-        r#"SELECT MAX(modified) FROM work WHERE "source" = ?"#,
+        r#"SELECT MAX(modified) FROM work WHERE source_id = ?"#,
     )
-    .bind(source)
+    .bind(source_id)
     .fetch_one(pool)
     .await?;
 
@@ -29,6 +28,7 @@ async fn get_max_modified(
 pub struct AzureDevops {
     pub org: String,
     pub pat: String,
+    pub source_id: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -78,6 +78,7 @@ struct AzureDevOpsBatchResponse {
 }
 
 async fn process_project(
+    source_id: i64,
     client: &Client,
     org: &str,
     pat: &str,
@@ -206,6 +207,7 @@ async fn process_project(
     let work: Vec<_> = items
         .iter()
         .map(|az| Work {
+            source_id,
             id: az.id.to_string(),
             version: Some(az.rev.to_string()),
             url: Some(az.url.clone()),
@@ -230,6 +232,7 @@ async fn process_project(
                 .into_iter()
                 .flatten()
                 .map(|p| Person {
+                    source_id,
                     id: p.id.clone(),
                     name: p.display_name.clone(),
                 })
@@ -242,20 +245,12 @@ async fn process_project(
 
 #[async_trait]
 impl Source for AzureDevops {
-    fn source_config(&self) -> SourceConfig {
-        SourceConfig::AzureDevops(self.org.clone())
+    fn source_id(&self) -> i64 {
+        self.source_id
     }
 
-    fn add(&self) -> anyhow::Result<()> {
-        match self.source_config().store_password(&self.pat) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(anyhow!("Failed to store PAT: {}", e)),
-        }
-    }
-
-    async fn sync(self, client: &Client, pool: &SqlitePool) -> Result<(), Error> {
-        let source = self.source_config().get_filename();
-        let max_modified = get_max_modified(pool, &source).await?;
+    async fn sync(&self, client: &Client, pool: &SqlitePool) -> Result<(), Error> {
+        let max_modified = get_max_modified(pool, self.source_id).await?;
 
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
@@ -281,9 +276,10 @@ impl Source for AzureDevops {
                 let org = self.org.clone();
                 let pat = self.pat.clone();
                 let project = project.clone();
+                let source_id = self.source_id;
 
                 task::spawn(async move {
-                    process_project(&client, &org, &pat, &project, max_modified).await
+                    process_project(source_id, &client, &org, &pat, &project, max_modified).await
                 })
             })
             .collect();
@@ -304,11 +300,13 @@ impl Source for AzureDevops {
         }
 
         let mut tx = pool.begin().await?;
-        for work_item in work {
-            work_item.save(&mut *tx, &source).await?;
+        for mut work_item in work {
+            work_item.source_id = self.source_id;
+            work_item.save(&mut *tx).await?;
         }
-        for person in people {
-            person.save(&mut *tx, &source).await?;
+        for mut person in people {
+            person.source_id = self.source_id;
+            person.save(&mut *tx).await?;
         }
         tx.commit().await?;
 

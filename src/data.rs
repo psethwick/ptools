@@ -1,10 +1,54 @@
 use anyhow::{Ok, Result};
 use chrono::{DateTime, Utc};
+use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite};
+use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+
+use crate::{SERVICE_NAME, azure_devops::AzureDevops, source::Source};
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, FromRow, Debug)]
+pub struct SourceConfig {
+    pub id: i64,
+    pub kind: String,
+    pub name: String,
+}
+
+impl SourceConfig {
+    pub fn get_source(&self) -> Result<impl Source + use<>> {
+        match self.kind.as_str() {
+            "azure_devops" => self.get_password().map(|pat| AzureDevops {
+                org: self.name.to_owned(),
+                pat: pat.to_owned(),
+                source_id: self.id,
+            }),
+            &_ => todo!(),
+        }
+    }
+
+    pub fn get_filename(&self) -> String {
+        format!("{}-{}", self.kind, self.name)
+    }
+
+    fn get_password(&self) -> Result<String, anyhow::Error> {
+        let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind, self.name))?;
+        Ok(entry.get_password()?)
+    }
+
+    pub fn store_password(&self, password: &str) -> Result<()> {
+        let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind, self.name))?;
+        entry.set_password(password)?;
+        Ok(())
+    }
+
+    pub fn delete_password(&self) -> Result<()> {
+        let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind, self.name))?;
+        Ok(entry.delete_credential()?)
+    }
+}
 
 #[derive(FromRow, Debug, Serialize, Deserialize)]
 pub struct Work {
+    pub source_id: i64,
     pub project: String,
     pub id: String,
     pub title: String,
@@ -22,15 +66,15 @@ pub struct Work {
 }
 
 impl Work {
-    pub async fn save<'a, E>(&self, executor: E, source: &str) -> Result<()>
+    pub async fn save<'a, E>(&self, executor: E) -> Result<()>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         sqlx::query(
-            "INSERT OR REPLACE INTO work (source, id, project, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
+            "INSERT OR REPLACE INTO work (source_id, id, project, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(source)
+        .bind(self.source_id)
         .bind(&self.id)
         .bind(&self.project)
         .bind(&self.title)
@@ -54,20 +98,21 @@ impl Work {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct Person {
+    pub source_id: i64,
     pub id: String,
     pub name: String,
 }
 
 impl Person {
-    pub async fn save<'a, E>(&self, executor: E, source: &str) -> Result<()>
+    pub async fn save<'a, E>(&self, executor: E) -> Result<()>
     where
         E: Executor<'a, Database = Sqlite>,
     {
         sqlx::query(
-            "INSERT OR REPLACE INTO person (source, id, name)
+            "INSERT OR REPLACE INTO person (source_id, id, name)
              VALUES (?, ?, ?)",
         )
-        .bind(source)
+        .bind(self.source_id)
         .bind(&self.id)
         .bind(&self.name)
         .execute(executor)
@@ -85,3 +130,25 @@ pub struct Data {
 
 // TODO: Pull Requests?
 // Event?
+
+pub enum Sources {
+    AzureDevops(AzureDevops),
+}
+
+pub async fn get_sources(pool: &SqlitePool) -> Result<Vec<impl Source + use<>>> {
+    sqlx::query_as::<_, SourceConfig>("SELECT id, kind, name, secrets FROM source")
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(|s| s.get_source())
+        .collect()
+}
+
+pub async fn remove_source(pool: &SqlitePool, sc_to_remove: &SourceConfig) -> Result<()> {
+    sc_to_remove.delete_password()?;
+    sqlx::query("DELETE FROM source WHERE id=?")
+        .bind(sc_to_remove.id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

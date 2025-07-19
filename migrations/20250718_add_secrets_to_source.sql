@@ -1,0 +1,1 @@
+ALTER TABLE source ADD COLUMN secrets TEXT NOT NULL DEFAULT '[]';

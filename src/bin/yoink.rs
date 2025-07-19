@@ -4,10 +4,8 @@ use futures::future::join_all;
 use sqlx::{SqlitePool, migrate};
 use std::path::PathBuf;
 use yoink_rs::SERVICE_NAME;
-use yoink_rs::azure_devops::AzureDevops;
-use yoink_rs::config::{Config, SourceConfig};
-use yoink_rs::data::Work;
-use yoink_rs::source::Source;
+use yoink_rs::data::{SourceConfig, Work, get_sources, remove_source};
+use yoink_rs::source::{Source, new_source};
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -55,7 +53,6 @@ fn get_data_dir() -> Result<PathBuf> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
-    let mut config = Config::load()?;
 
     let data_dir = get_data_dir()?;
     std::fs::create_dir_all(&data_dir)?;
@@ -66,20 +63,41 @@ async fn main() -> Result<()> {
 
     match args.command {
         Root::Add(a) => match a {
-            Add::AzureDevops { org, pat } => config.add_source(AzureDevops { org, pat })?,
+            Add::AzureDevops { org, pat } => {
+                let kind = "azure_devops";
+                new_source(&pool, kind, &org, pat).await?;
+                println!("Added source: {kind}-{org}");
+            }
         },
         Root::Delete(d) => match d {
-            Delete::AzureDevops { org } => config.remove_source(&SourceConfig::AzureDevops(org))?,
+            Delete::AzureDevops { org } => {
+                let sc_to_remove = sqlx::query_as::<_, SourceConfig>(
+                    "SELECT id, kind, name FROM source WHERE kind = ? AND name = ?",
+                )
+                .bind("azure_devops")
+                .bind(org)
+                .fetch_one(&pool)
+                .await?;
+                remove_source(&pool, &sc_to_remove).await?;
+            }
         },
         Root::Sync => {
             let client = reqwest::Client::new();
-            let futures = config.sources().into_iter().map(|s| s.sync(&client, &pool));
+            let sources = get_sources(&pool).await?;
+            let mut futures = Vec::new();
+            for s in sources {
+                let client = client.clone();
+                let pool = pool.clone();
+                futures.push(tokio::spawn(async move { s.sync(&client, &pool).await }));
+            }
 
-            let results: Vec<Result<()>> = join_all(futures).await;
+            let results = join_all(futures).await;
 
             for result in results {
-                if let Err(e) = result {
-                    eprintln!("Sync failed: {e}");
+                match result {
+                    Ok(Ok(())) => (),
+                    Ok(Err(e)) => eprintln!("Sync failed: {e}"),
+                    Err(e) => eprintln!("Sync task failed: {e}"),
                 }
             }
         }
