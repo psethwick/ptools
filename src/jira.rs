@@ -1,0 +1,262 @@
+use crate::source::SourceSync;
+use crate::source::{Data, Person, Work};
+use anyhow::{Error, Result, anyhow};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use itertools::Itertools;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::SqlitePool;
+use tokio::task::JoinSet;
+
+async fn get_max_modified(
+    pool: &SqlitePool,
+    project: &str,
+    source_id: i64,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    let max_modified = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+        r#"SELECT MAX(modified) FROM work WHERE source_id = ? and project = ?"#,
+    )
+    .bind(source_id)
+    .bind(project)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(max_modified)
+}
+
+pub struct Jira {
+    pub domain: String,
+    pub user: String,
+    pub pat: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct JiraPerson {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct JiraWorkItemFields {
+    pub summary: String,
+    pub description: Option<Value>,
+    pub project: Value,
+    pub status: Value,
+    #[serde(rename = "issuetype")]
+    pub issue_type: Value,
+    pub parent: Option<Value>,
+    pub created: Option<DateTime<Utc>>,
+    pub updated: Option<DateTime<Utc>>,
+    pub creator: Option<JiraPerson>,
+    pub assignee: Option<JiraPerson>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct JiraWorkItem {
+    pub id: String,
+    #[serde(rename = "self")]
+    pub url: String,
+    pub key: String,
+    pub fields: JiraWorkItemFields,
+}
+
+#[derive(Deserialize, Debug)]
+struct JiraSearchResponse {
+    pub issues: Vec<JiraWorkItem>,
+}
+
+async fn process_project(
+    source_id: i64,
+    client: &Client,
+    domain: &str,
+    user: &str,
+    pat: &str,
+    project: &Value,
+    pool: &SqlitePool,
+) -> Result<()> {
+    let project_key = project["key"]
+        .as_str()
+        .ok_or_else(|| anyhow!("Project key not found"))?;
+    let max_modified = get_max_modified(pool, project_key, source_id).await?;
+
+    let date_filter = if let Some(max_modified_date) = max_modified {
+        format!(
+            " AND updated > '{}'",
+            max_modified_date.format("%Y-%m-%d %H:%M")
+        )
+    } else {
+        "".to_string()
+    };
+
+    let jql = format!("project = \"{project_key}\"{date_filter} ORDER BY updated DESC");
+
+    let mut start_at = 0;
+    let max_results = 100;
+
+    let mut set = JoinSet::new();
+
+    loop {
+        let _search_body = serde_json::json!({
+            "jql": jql,
+            "startAt": start_at,
+            "maxResults": max_results,
+            "fields": [
+                "summary",
+                "description",
+                "project",
+                "status",
+                "issuetype",
+                "parent",
+                "created",
+                "updated",
+                "creator",
+                "assignee"
+            ]
+        });
+
+        let client = client.clone();
+        let user = user.to_string();
+        let pat = pat.to_string();
+        let domain_clone = domain.to_string();
+
+        set.spawn(async move {
+            let search_url = format!("https://{domain_clone}.atlassian.net/rest/api/3/search");
+            let search_response = client
+                .post(&search_url)
+                .basic_auth(user, Some(pat))
+                .send()
+                .await?
+                .json::<JiraSearchResponse>()
+                .await?;
+
+            let work: Vec<_> = search_response
+                .issues
+                .iter()
+                .map(|issue| Work {
+                    source_id,
+                    id: issue.id.clone(),
+                    version: None,
+                    url: Some(issue.url.clone()),
+                    project: issue.fields.project["key"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string(),
+                    title: issue.fields.summary.clone(),
+                    description: issue
+                        .fields
+                        .description
+                        .as_ref()
+                        .and_then(|d| d.as_str())
+                        .map(|s| s.to_string()),
+                    created: issue.fields.created,
+                    created_by_id: issue.fields.creator.as_ref().map(|c| c.account_id.clone()),
+                    assigned_to_id: issue.fields.assignee.as_ref().map(|a| a.account_id.clone()),
+                    column: None,
+                    modified: issue.fields.updated,
+                    state: issue.fields.status["name"].as_str().map(|s| s.to_string()),
+                    work_type: issue.fields.issue_type["name"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string(),
+                    parent_id: issue
+                        .fields
+                        .parent
+                        .as_ref()
+                        .and_then(|p| p["key"].as_str())
+                        .map(|s| s.to_string()),
+                })
+                .collect();
+
+            let people: Vec<Person> = search_response
+                .issues
+                .iter()
+                .flat_map(|issue| {
+                    [
+                        issue.fields.creator.as_ref(),
+                        issue.fields.assignee.as_ref(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .map(|p| Person {
+                        source_id,
+                        id: p.account_id.clone(),
+                        name: p.display_name.clone(),
+                    })
+                })
+                .unique_by(|p| p.id.clone())
+                .collect();
+
+            Ok::<Data, Error>(Data { work, people })
+        });
+
+        if set.len() < max_results {
+            break;
+        }
+        start_at += max_results;
+    }
+
+    let mut tx = pool.begin().await?;
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(data)) => {
+                for work_item in data.work {
+                    work_item.save(&mut *tx).await?;
+                }
+                for person in data.people {
+                    person.save(&mut *tx).await?;
+                }
+            }
+            Ok(Err(e)) => {
+                eprintln!(
+                    "Warning: Could not fetch work items batch for project {project_key}: {e}"
+                )
+            }
+            Err(e) => eprintln!("Warning: Batch task failed for project {project_key}: {e}"),
+        }
+    }
+    tx.commit().await?;
+
+    Ok(())
+}
+
+#[async_trait]
+impl SourceSync for Jira {
+    async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<(), Error> {
+        let projects_url = format!("https://{}.atlassian.net/rest/api/3/project", self.domain);
+        let projects_response: Vec<Value> = client
+            .get(&projects_url)
+            .basic_auth(&self.user, Some(&self.pat))
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        let mut set = JoinSet::new();
+
+        for project in projects_response {
+            let client = client.clone();
+            let domain = self.domain.clone();
+            let user = self.user.clone();
+            let pat = self.pat.clone();
+            let pool = pool.clone();
+
+            set.spawn(async move {
+                process_project(source_id, &client, &domain, &user, &pat, &project, &pool).await
+            });
+        }
+
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok(Ok(())) => (),
+                Ok(Err(e)) => eprintln!("Project processing error: {e}"),
+                Err(e) => eprintln!("Task join error: {e}"),
+            }
+        }
+
+        Ok(())
+    }
+}

@@ -4,8 +4,7 @@ use sqlx::{SqlitePool, migrate};
 use std::path::PathBuf;
 use tokio::task::JoinSet;
 use yoink_rs::SERVICE_NAME;
-use yoink_rs::source::SourceSync;
-use yoink_rs::source::{Source, Work, get_sources, remove_source};
+use yoink_rs::source::{Kind, Source, Work, get_sources, remove_source};
 
 #[derive(Debug, Parser)]
 #[command(name = "yoink")]
@@ -33,12 +32,21 @@ enum List {
 
 #[derive(Debug, Subcommand)]
 enum Add {
-    AzureDevops { org: String, pat: String },
+    AzureDevops {
+        org: String,
+        pat: String,
+    },
+    Jira {
+        org: String,
+        user: String,
+        password: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 enum Delete {
     AzureDevops { org: String },
+    Jira { org: String },
 }
 
 fn get_data_dir() -> Result<PathBuf> {
@@ -59,16 +67,18 @@ async fn main() -> Result<()> {
     let db_path = data_dir.join("yoink.db");
     let pool =
         SqlitePool::connect(&format!("sqlite:{}?mode=rwc", db_path.to_str().unwrap())).await?;
-    sqlx::query("PRAGMA journal_mode=WAL;").execute(&pool).await?;
+    sqlx::query("PRAGMA journal_mode=WAL;")
+        .execute(&pool)
+        .await?;
     migrate!("./migrations").run(&pool).await?;
 
     match args.command {
         Root::Add(a) => match a {
             Add::AzureDevops { org, pat } => {
-                let kind = "azure_devops";
-                Source::add(&pool, kind, &org, pat).await?;
-                println!("Added source: {kind}-{org}");
+                Source::add(&pool, Kind::AzureDevops, &org, pat).await?;
+                println!("Added source: {}-{org}", Kind::AzureDevops);
             }
+            Add::Jira { .. } => todo!(),
         },
         Root::Delete(d) => match d {
             Delete::AzureDevops { org } => {
@@ -81,6 +91,7 @@ async fn main() -> Result<()> {
                 .await?;
                 remove_source(&pool, &sc_to_remove).await?;
             }
+            Delete::Jira { .. } => todo!(),
         },
         Root::Sync => {
             let client = reqwest::Client::new();

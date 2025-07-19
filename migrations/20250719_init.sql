@@ -1,6 +1,6 @@
 CREATE TABLE source (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kind TEXT NOT NULL,
+  kind INTEGER NOT NULL,
   name TEXT NOT NULL,
   secrets TEXT NOT NULL DEFAULT '[]',
   UNIQUE (kind, name)
@@ -31,5 +31,5 @@ CREATE TABLE person (
   id TEXT NOT NULL,
   name TEXT NOT NULL,
   PRIMARY KEY (source_id, id),
-  FOREIGN KEY (source_id) REFERENCES source(id)
+  FOREIGN KEY (source_id) REFERENCES source (id)
 );

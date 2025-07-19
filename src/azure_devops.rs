@@ -29,7 +29,6 @@ async fn get_max_modified(
 pub struct AzureDevops {
     pub org: String,
     pub pat: String,
-    pub source_id: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -252,13 +251,11 @@ async fn process_project(
 
 #[async_trait]
 impl SourceSync for AzureDevops {
-    fn source_id(&self) -> i64 {
-        self.source_id
-    }
+    // fn source_id(&self) -> i64 {
+    //     self.source_id
+    // }
 
-    async fn sync(&self, client: &Client, pool: &SqlitePool) -> Result<(), Error> {
-        // let max_modified = get_max_modified(pool, self.source_id).await?;
-
+    async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<(), Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -283,7 +280,7 @@ impl SourceSync for AzureDevops {
             let org = self.org.clone();
             let pat = self.pat.clone();
             let project = project.clone();
-            let source_id = self.source_id;
+            // let source_id = source_id;
             let pool = pool.clone();
 
             set.spawn(async move {
