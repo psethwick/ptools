@@ -172,7 +172,7 @@ async fn process_project(
         set.spawn(async move {
             let ids_param = batch.join(",");
             let batch_url = format!(
-                "https://dev.azure.com/{org}/_apis/wit/workitems?ids={ids_param}&fields={fields_param}"
+                "https://dev.azure.com/{org}/_apis/wit/workitems?ids={ids_param}&fields={fields_param}&api-version=7.1"
             );
 
             let batch_response = client
