@@ -1,8 +1,8 @@
 use anyhow::{Result, anyhow};
 use clap::{self, Parser, Subcommand};
-use futures::future::join_all;
 use sqlx::{SqlitePool, migrate};
 use std::path::PathBuf;
+use tokio::task::JoinSet;
 use yoink_rs::SERVICE_NAME;
 use yoink_rs::data::{SourceConfig, Work, get_sources, remove_source};
 use yoink_rs::source::{Source, new_source};
@@ -84,20 +84,21 @@ async fn main() -> Result<()> {
         Root::Sync => {
             let client = reqwest::Client::new();
             let sources = get_sources(&pool).await?;
-            let mut futures = Vec::new();
-            for s in sources {
+            let mut set = JoinSet::new();
+
+            for source in sources {
                 let client = client.clone();
                 let pool = pool.clone();
-                futures.push(tokio::spawn(async move { s.sync(&client, &pool).await }));
+                set.spawn(async move {
+                    if let Err(e) = source.sync(&client, &pool).await {
+                        eprintln!("Sync failed: {e}");
+                    }
+                });
             }
 
-            let results = join_all(futures).await;
-
-            for result in results {
-                match result {
-                    Ok(Ok(())) => (),
-                    Ok(Err(e)) => eprintln!("Sync failed: {e}"),
-                    Err(e) => eprintln!("Sync task failed: {e}"),
+            while let Some(res) = set.join_next().await {
+                if let Err(e) = res {
+                    eprintln!("Task execution failed: {e}");
                 }
             }
         }

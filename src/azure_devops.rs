@@ -3,13 +3,12 @@ use crate::source::Source;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::future::join_all;
 use itertools::Itertools;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
-use tokio::task;
+use tokio::task::JoinSet;
 
 async fn get_max_modified(
     pool: &SqlitePool,
@@ -84,7 +83,8 @@ async fn process_project(
     pat: &str,
     project: &Value,
     max_modified: Option<DateTime<Utc>>,
-) -> Result<Data> {
+    pool: &SqlitePool,
+) -> Result<()> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
@@ -141,7 +141,7 @@ async fn process_project(
 
     if work_item_ids.is_empty() {
         dbg!("no work found");
-        return Ok(Data::default());
+        return Ok(());
     }
 
     let field_names = [
@@ -160,41 +160,82 @@ async fn process_project(
 
     let fields_param = field_names.join(",");
 
-    let batch_tasks: Vec<_> = work_item_ids
-        .chunks(200)
-        .map(|batch| {
-            let client = client.clone();
-            let org = org.to_string();
-            let pat = pat.to_string();
-            let fields_param = fields_param.clone();
-            let batch: Vec<String> = batch.to_vec();
+    let mut set = JoinSet::new();
 
-            task::spawn(async move {
-                let ids_param = batch.join(",");
-                let batch_url = format!(
-                    "https://dev.azure.com/{org}/_apis/wit/workitems?ids={ids_param}&fields={fields_param}"
-                );
+    for batch in work_item_ids.chunks(200) {
+        let client = client.clone();
+        let org = org.to_string();
+        let pat = pat.to_string();
+        let fields_param = fields_param.clone();
+        let batch: Vec<String> = batch.to_vec();
 
-                let batch_response = client
-                    .get(&batch_url)
-                    .bearer_auth(&pat)
-                    .send()
-                    .await?
-                    .json::<AzureDevOpsBatchResponse>()
-                    .await?
-                    .value;
+        set.spawn(async move {
+            let ids_param = batch.join(",");
+            let batch_url = format!(
+                "https://dev.azure.com/{org}/_apis/wit/workitems?ids={ids_param}&fields={fields_param}"
+            );
 
-                Ok::<Vec<AzureDevOpsWorkItem>, Error>(batch_response)
-            })
-        })
-        .collect();
+            let batch_response = client
+                .get(&batch_url)
+                .bearer_auth(&pat)
+                .send()
+                .await?
+                .json::<AzureDevOpsBatchResponse>()
+                .await?
+                .value;
 
-    let batch_results = join_all(batch_tasks).await;
+            let work: Vec<_> = batch_response
+                .iter()
+                .map(|az| Work {
+                    source_id,
+                    id: az.id.to_string(),
+                    version: Some(az.rev.to_string()),
+                    url: Some(az.url.clone()),
+                    project: az.fields.project.clone(),
+                    title: az.fields.title.clone(),
+                    description: az.fields.description.clone(),
+                    created: az.fields.created_date,
+                    created_by_id: az.fields.created_by.as_ref().map(|cb| cb.id.to_string()),
+                    assigned_to_id: az.fields.assigned_to.as_ref().map(|at| at.id.to_string()),
+                    column: az.fields.column.clone(),
+                    modified: az.fields.changed_date,
+                    state: az.fields.state.clone(),
+                    work_type: az.fields.item_type.clone(),
+                    parent_id: az.fields.parent_id.map(|pi| pi.to_string()),
+                })
+                .collect();
 
-    let mut items = Vec::new();
-    for result in batch_results {
-        match result {
-            Ok(Ok(batch_items)) => items.extend(batch_items),
+            let people: Vec<Person> = batch_response
+                .iter()
+                .flat_map(|c| {
+                    [c.fields.created_by.as_ref(), c.fields.assigned_to.as_ref()]
+                        .into_iter()
+                        .flatten()
+                        .map(|p| Person {
+                            source_id,
+                            id: p.id.clone(),
+                            name: p.display_name.clone(),
+                        })
+                })
+                .unique_by(|p| p.id.clone())
+                .collect();
+
+            Ok::<Data, Error>(Data { work, people })
+        });
+    }
+
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(data)) => {
+                let mut tx = pool.begin().await?;
+                for work_item in data.work {
+                    work_item.save(&mut *tx).await?;
+                }
+                for person in data.people {
+                    person.save(&mut *tx).await?;
+                }
+                tx.commit().await?;
+            }
             Ok(Err(e)) => {
                 eprintln!(
                     "Warning: Could not fetch work items batch for project {project_name}: {e}"
@@ -204,43 +245,7 @@ async fn process_project(
         }
     }
 
-    let work: Vec<_> = items
-        .iter()
-        .map(|az| Work {
-            source_id,
-            id: az.id.to_string(),
-            version: Some(az.rev.to_string()),
-            url: Some(az.url.clone()),
-            project: az.fields.project.clone(),
-            title: az.fields.title.clone(),
-            description: az.fields.description.clone(),
-            created: az.fields.created_date,
-            created_by_id: az.fields.created_by.as_ref().map(|cb| cb.id.to_string()),
-            assigned_to_id: az.fields.assigned_to.as_ref().map(|at| at.id.to_string()),
-            column: az.fields.column.clone(),
-            modified: az.fields.changed_date,
-            state: az.fields.state.clone(),
-            work_type: az.fields.item_type.clone(),
-            parent_id: az.fields.parent_id.map(|pi| pi.to_string()),
-        })
-        .collect();
-
-    let people: Vec<Person> = items
-        .iter()
-        .flat_map(|c| {
-            [c.fields.created_by.as_ref(), c.fields.assigned_to.as_ref()]
-                .into_iter()
-                .flatten()
-                .map(|p| Person {
-                    source_id,
-                    id: p.id.clone(),
-                    name: p.display_name.clone(),
-                })
-        })
-        .unique_by(|p| p.id.clone())
-        .collect();
-
-    Ok(Data { work, people })
+    Ok(())
 }
 
 #[async_trait]
@@ -269,46 +274,37 @@ impl Source for AzureDevops {
             .as_array()
             .unwrap_or(&empty_projects);
 
-        let project_tasks: Vec<_> = projects
-            .iter()
-            .map(|project| {
-                let client = client.clone();
-                let org = self.org.clone();
-                let pat = self.pat.clone();
-                let project = project.clone();
-                let source_id = self.source_id;
+        let mut set = JoinSet::new();
 
-                task::spawn(async move {
-                    process_project(source_id, &client, &org, &pat, &project, max_modified).await
-                })
-            })
-            .collect();
+        for project in projects {
+            let client = client.clone();
+            let org = self.org.clone();
+            let pat = self.pat.clone();
+            let project = project.clone();
+            let source_id = self.source_id;
+            let pool = pool.clone();
 
-        let project_results = join_all(project_tasks).await;
+            set.spawn(async move {
+                process_project(
+                    source_id,
+                    &client,
+                    &org,
+                    &pat,
+                    &project,
+                    max_modified,
+                    &pool,
+                )
+                .await
+            });
+        }
 
-        let mut work = Vec::new();
-        let mut people = Vec::new();
-        for result in project_results {
-            match result {
-                Ok(Ok(project_items)) => {
-                    work.extend(project_items.work);
-                    people.extend(project_items.people);
-                }
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok(Ok(())) => (),
                 Ok(Err(e)) => eprintln!("Project processing error: {e}"),
                 Err(e) => eprintln!("Task join error: {e}"),
             }
         }
-
-        let mut tx = pool.begin().await?;
-        for mut work_item in work {
-            work_item.source_id = self.source_id;
-            work_item.save(&mut *tx).await?;
-        }
-        for mut person in people {
-            person.source_id = self.source_id;
-            person.save(&mut *tx).await?;
-        }
-        tx.commit().await?;
 
         Ok(())
     }
