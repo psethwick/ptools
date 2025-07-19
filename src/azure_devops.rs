@@ -251,10 +251,6 @@ async fn process_project(
 
 #[async_trait]
 impl SourceSync for AzureDevops {
-    // fn source_id(&self) -> i64 {
-    //     self.source_id
-    // }
-
     async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<(), Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
@@ -280,7 +276,6 @@ impl SourceSync for AzureDevops {
             let org = self.org.clone();
             let pat = self.pat.clone();
             let project = project.clone();
-            // let source_id = source_id;
             let pool = pool.clone();
 
             set.spawn(async move {

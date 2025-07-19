@@ -10,8 +10,6 @@ use std::fmt::Display;
 
 #[async_trait]
 pub trait SourceSync: Send + Sync {
-    // fn source_id(&self) -> i64;
-
     async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<()>;
 }
 
@@ -125,21 +123,14 @@ impl Source {
     }
 
     pub async fn add(pool: &SqlitePool, kind: Kind, name: &str, password: String) -> Result<()> {
-        let result = sqlx::query("INSERT OR REPLACE INTO source (kind, name) VALUES (?, ?)")
+        sqlx::query("INSERT OR REPLACE INTO source (kind, name) VALUES (?, ?)")
             .bind(kind)
             .bind(name)
             .execute(pool)
             .await?;
 
-        let id = result.last_insert_rowid();
-        // TODO: this feels silly creating a Source just to call store_password
-        let sc = Source {
-            id,
-            kind,
-            name: name.to_owned(),
-        };
-
-        sc.store_password(&password)?;
+        let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
+        entry.set_password(&password)?;
         Ok(())
     }
 
@@ -150,12 +141,6 @@ impl Source {
     fn get_password(&self) -> Result<String, Error> {
         let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind, self.name))?;
         Ok(entry.get_password()?)
-    }
-
-    pub fn store_password(&self, password: &str) -> Result<()> {
-        let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", self.kind, self.name))?;
-        entry.set_password(password)?;
-        Ok(())
     }
 
     pub fn delete_password(&self) -> Result<()> {
