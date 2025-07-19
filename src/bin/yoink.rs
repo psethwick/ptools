@@ -59,6 +59,7 @@ async fn main() -> Result<()> {
     let db_path = data_dir.join("yoink.db");
     let pool =
         SqlitePool::connect(&format!("sqlite:{}?mode=rwc", db_path.to_str().unwrap())).await?;
+    sqlx::query("PRAGMA journal_mode=WAL;").execute(&pool).await?;
     migrate!("./migrations").run(&pool).await?;
 
     match args.command {
