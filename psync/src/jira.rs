@@ -62,6 +62,13 @@ struct JiraWorkItem {
     pub url: String,
     pub key: String,
     pub fields: JiraWorkItemFields,
+    #[serde(rename = "renderedFields")]
+    pub rendered_fields: Option<JiraRenderedFields>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct JiraRenderedFields {
+    pub description: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -100,7 +107,7 @@ async fn process_project(
     let mut set = JoinSet::new();
 
     loop {
-        let _search_body = serde_json::json!({
+        let search_body = serde_json::json!({
             "jql": jql,
             "startAt": start_at,
             "maxResults": max_results,
@@ -115,7 +122,8 @@ async fn process_project(
                 "updated",
                 "creator",
                 "assignee"
-            ]
+            ],
+            "expand": ["renderedFields"]
         });
 
         let client = client.clone();
@@ -128,6 +136,7 @@ async fn process_project(
             let search_response = client
                 .post(&search_url)
                 .basic_auth(user, Some(pat))
+                .json(&search_body)
                 .send()
                 .await?
                 .json::<JiraSearchResponse>()
@@ -147,11 +156,9 @@ async fn process_project(
                         .to_string(),
                     title: issue.fields.summary.clone(),
                     description: issue
-                        .fields
-                        .description
+                        .rendered_fields
                         .as_ref()
-                        .and_then(|d| d.as_str())
-                        .map(|s| s.to_string()),
+                        .and_then(|r| r.description.clone()),
                     created: issue.fields.created,
                     created_by_id: issue.fields.creator.as_ref().map(|c| c.account_id.clone()),
                     assigned_to_id: issue.fields.assignee.as_ref().map(|a| a.account_id.clone()),
