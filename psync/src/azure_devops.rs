@@ -1,5 +1,5 @@
-use crate::source::SourceSync;
 use crate::source::{Data, Person, Work};
+use crate::source::{SourceSync, get_max_modified};
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -9,22 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use tokio::task::JoinSet;
-
-async fn get_max_modified(
-    pool: &SqlitePool,
-    project: &str,
-    source_id: i64,
-) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
-    let max_modified = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
-        r#"SELECT MAX(modified) FROM work WHERE source_id = ? and project = ?"#,
-    )
-    .bind(source_id)
-    .bind(project)
-    .fetch_one(pool)
-    .await?;
-
-    Ok(max_modified)
-}
 
 pub struct AzureDevops {
     pub org: String,

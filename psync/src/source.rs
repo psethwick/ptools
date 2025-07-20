@@ -252,3 +252,19 @@ pub async fn remove_source(pool: &SqlitePool, sc_to_remove: &Source) -> Result<(
         .await?;
     Ok(())
 }
+
+pub async fn get_max_modified(
+    pool: &SqlitePool,
+    project: &str,
+    source_id: i64,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    let max_modified = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+        r#"SELECT MAX(modified) FROM work WHERE source_id = ? and project = ?"#,
+    )
+    .bind(source_id)
+    .bind(project)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(max_modified)
+}
