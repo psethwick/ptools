@@ -157,7 +157,7 @@ async fn process_project(
                         .fields
                         .parent
                         .as_ref()
-                        .and_then(|p| p["key"].as_str())
+                        .and_then(|p| p["id"].as_str())
                         .map(|s| s.to_string()),
                 })
                 .collect();
