@@ -231,9 +231,11 @@ async fn process_project(
             Ok(Ok(data)) => {
                 for work_item in data.work {
                     work_item.save(&mut *tx).await?;
+                    dbg!(work_item);
                 }
                 for person in data.people {
                     person.save(&mut *tx).await?;
+                    dbg!(person);
                 }
             }
             Ok(Err(e)) => {

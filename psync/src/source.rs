@@ -199,7 +199,7 @@ impl Work {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Person {
     pub source_id: i64,
     pub id: String,
