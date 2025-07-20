@@ -125,7 +125,6 @@ async fn process_project(
         .unwrap_or_else(Vec::new);
 
     if work_item_ids.is_empty() {
-        dbg!("no work found");
         return Ok(());
     }
 
