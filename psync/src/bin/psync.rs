@@ -77,7 +77,18 @@ async fn main() -> Result<()> {
                 Source::add(&pool, Kind::AzureDevops, &org, pat).await?;
                 println!("Added source: {}-{org}", Kind::AzureDevops);
             }
-            Add::Jira { .. } => todo!(),
+            Add::Jira {
+                org,
+                user,
+                password,
+            } => {
+                let credentials = serde_json::json!({
+                    "user": user,
+                    "password": password
+                });
+                Source::add(&pool, Kind::Jira, &org, credentials.to_string()).await?;
+                println!("Added source: {}-{org}", Kind::Jira);
+            }
         },
         Root::Delete(d) => match d {
             Delete::AzureDevops { org } => {

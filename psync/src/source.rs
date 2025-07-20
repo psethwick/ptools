@@ -106,14 +106,14 @@ impl Source {
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Jira user not found in password data"))?
                     .to_owned();
-                let pat = password_data["pat"]
+                let pat = password_data["password"]
                     .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("Jira PAT not found in password data"))?
+                    .ok_or_else(|| anyhow::anyhow!("Jira password not found in password data"))?
                     .to_owned();
                 Jira {
                     domain: self.name.to_owned(),
                     user,
-                    pat,
+                    password: pat,
                 }
                 .sync(client, pool, self.id)
                 .await?;
@@ -132,10 +132,6 @@ impl Source {
         let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
         entry.set_password(&password)?;
         Ok(())
-    }
-
-    pub fn get_filename(&self) -> String {
-        format!("{}-{}", self.kind, self.name)
     }
 
     fn get_password(&self) -> Result<String, Error> {

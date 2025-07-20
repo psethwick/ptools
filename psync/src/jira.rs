@@ -29,7 +29,7 @@ async fn get_max_modified(
 pub struct Jira {
     pub domain: String,
     pub user: String,
-    pub pat: String,
+    pub password: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -236,7 +236,7 @@ impl SourceSync for Jira {
         let projects_url = format!("https://{}.atlassian.net/rest/api/3/project", self.domain);
         let projects_response: Vec<Value> = client
             .get(&projects_url)
-            .basic_auth(&self.user, Some(&self.pat))
+            .basic_auth(&self.user, Some(&self.password))
             .send()
             .await?
             .json()
@@ -248,7 +248,7 @@ impl SourceSync for Jira {
             let client = client.clone();
             let domain = self.domain.clone();
             let user = self.user.clone();
-            let pat = self.pat.clone();
+            let pat = self.password.clone();
             let pool = pool.clone();
 
             set.spawn(async move {
