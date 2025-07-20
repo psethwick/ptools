@@ -66,8 +66,8 @@ fn execute_task(task: &Task, all_tasks: &HashMap<String, Task>) -> Result<()> {
                     let dep_task = all_tasks
                         .get(dep_label)
                         .context(format!("Dependent task '{dep_label}' not found"))?
-                        .clone(); // Clone the task for the new thread
-                    let all_tasks_clone = all_tasks.clone(); // Clone the map for the new thread
+                        .clone();
+                    let all_tasks_clone = all_tasks.clone();
 
                     println!("\n--> Spawning dependent task: {dep_label}");
                     let handle = thread::spawn(move || {
