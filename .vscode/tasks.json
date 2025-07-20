@@ -7,6 +7,15 @@
             "command": "echo",
             "args": ["Hello, from tasks!"
             ]
+        },
+        {
+            "label": "Echo With Spaces",
+            "type": "shell",
+            "command": "echo",
+            "args": [
+                "argument with spaces",
+                "another one"
+            ]
         }
     ]
 }

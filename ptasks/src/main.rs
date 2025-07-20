@@ -11,6 +11,8 @@ use std::process::{Command, Stdio};
 #[serde(rename_all = "camelCase")]
 struct Task {
     label: String,
+    #[serde(rename = "type")]
+    task_type: Option<String>,
     command: Option<String>,
     args: Option<Vec<String>>,
     options: Option<TaskOptions>,
@@ -49,11 +51,33 @@ fn execute_task(task: &Task) -> Result<()> {
         .command
         .as_ref()
         .context("Task has no command to execute")?;
-    let mut command = Command::new(command_name);
 
-    if let Some(args) = &task.args {
-        command.args(args);
-    }
+    let mut command = match task.task_type.as_deref() {
+        Some("process") => {
+            let mut cmd = Command::new(command_name);
+            if let Some(args) = &task.args {
+                cmd.args(args);
+            }
+            cmd
+        }
+        _ => {
+            // v****e defaults to "shell"
+            let mut script = command_name.clone();
+            if let Some(args) = &task.args {
+                for i in 1..=args.len() {
+                    script.push_str(&format!(" \"${i}\""));
+                }
+            }
+
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c").arg(&script);
+            cmd.arg(command_name); // This sets $0 for the script
+            if let Some(args) = &task.args {
+                cmd.args(args);
+            }
+            cmd
+        }
+    };
 
     if let Some(options) = &task.options {
         if let Some(cwd) = &options.cwd {
@@ -68,15 +92,15 @@ fn execute_task(task: &Task) -> Result<()> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .with_context(|| format!("Failed to spawn command: {}", command_name))?;
+        .with_context(|| format!("Failed to spawn command: {command_name}"))?;
 
     let status = child.wait().context("Failed to wait for command")?;
 
     if !status.success() {
-        anyhow::bail!("Command failed with status: {}", status);
+        anyhow::bail!("Command failed with status: {status}");
     }
 
-    set_window_title("noot noot")?;
+    set_window_title("ptasks")?;
     Ok(())
 }
 
@@ -90,5 +114,11 @@ fn main() -> Result<()> {
     let tasks = read_tasks_from_file(tasks_json_path)?;
 
     let task = Select::new("Select a task to run", tasks).prompt()?;
-    execute_task(&task)
+
+    if let Err(e) = execute_task(&task) {
+        eprintln!("\nError running task '{}':\n{}", task.label, e);
+        std::process::exit(1);
+    }
+
+    Ok(())
 }
