@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 #[serde(rename_all = "camelCase")]
 struct Task {
     label: String,
-    command: String,
+    command: Option<String>,
     args: Option<Vec<String>>,
     options: Option<TaskOptions>,
 }
@@ -37,14 +37,19 @@ struct TasksFile {
 
 fn read_tasks_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Task>> {
     let file_content = fs::read_to_string(path).context("Failed to read tasks.json")?;
-    let tasks_file: TasksFile = json5::from_str(&file_content).context("Failed to parse tasks.json")?;
+    let tasks_file: TasksFile =
+        json5::from_str(&file_content).context("Failed to parse tasks.json")?;
     Ok(tasks_file.tasks)
 }
 
 fn execute_task(task: &Task) -> Result<()> {
-    set_window_title(&task.label);
+    set_window_title(&task.label)?;
 
-    let mut command = Command::new(&task.command);
+    let command_name = task
+        .command
+        .as_ref()
+        .context("Task has no command to execute")?;
+    let mut command = Command::new(command_name);
 
     if let Some(args) = &task.args {
         command.args(args);
@@ -63,7 +68,7 @@ fn execute_task(task: &Task) -> Result<()> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .with_context(|| format!("Failed to spawn command: {}", task.command))?;
+        .with_context(|| format!("Failed to spawn command: {}", command_name))?;
 
     let status = child.wait().context("Failed to wait for command")?;
 
@@ -71,13 +76,13 @@ fn execute_task(task: &Task) -> Result<()> {
         anyhow::bail!("Command failed with status: {}", status);
     }
 
-    set_window_title("noot noot");
+    set_window_title("noot noot")?;
     Ok(())
 }
 
-fn set_window_title(title: &str) {
-    print!("\u{1b}]0;{}\u{7}", title);
-    io::stdout().flush().unwrap();
+fn set_window_title(title: &str) -> io::Result<()> {
+    print!("\u{1b}]0;{title}\u{7}");
+    io::stdout().flush()
 }
 
 fn main() -> Result<()> {
