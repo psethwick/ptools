@@ -16,6 +16,8 @@ struct Task {
     command: Option<String>,
     args: Option<Vec<String>>,
     options: Option<TaskOptions>,
+    depends_on: Option<Vec<String>>,
+    depends_order: Option<String>,
 }
 
 impl std::fmt::Display for Task {
@@ -44,7 +46,20 @@ fn read_tasks_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Task>> {
     Ok(tasks_file.tasks)
 }
 
-fn execute_task(task: &Task) -> Result<()> {
+fn execute_task(task: &Task, all_tasks: &HashMap<String, Task>) -> Result<()> {
+    if let Some(dependencies) = &task.depends_on {
+        if task.depends_order.as_deref() == Some("sequence") {
+            for dep_label in dependencies {
+                let dep_task = all_tasks
+                    .get(dep_label)
+                    .context(format!("Dependent task '{dep_label}' not found"))?;
+                println!("\n--> Running dependent task: {dep_label}");
+                execute_task(dep_task, all_tasks)?;
+                println!("\n<-- Finished dependent task: {dep_label}");
+            }
+        }
+    }
+
     set_window_title(&task.label)?;
 
     let command_name = task
@@ -113,10 +128,17 @@ fn main() -> Result<()> {
     let tasks_json_path = ".vscode/tasks.json";
     let tasks = read_tasks_from_file(tasks_json_path)?;
 
-    let task = Select::new("Select a task to run", tasks).prompt()?;
+    let task_map: HashMap<String, Task> = tasks
+        .into_iter()
+        .map(|task| (task.label.clone(), task))
+        .collect();
 
-    if let Err(e) = execute_task(&task) {
-        eprintln!("\nError running task '{}':\n{}", task.label, e);
+    let task_labels: Vec<Task> = task_map.values().cloned().collect();
+
+    let selected_task = Select::new("Select a task to run", task_labels).prompt()?;
+
+    if let Err(e) = execute_task(&selected_task, &task_map) {
+        eprintln!("\nError running task '{}':\n{}", selected_task.label, e);
         std::process::exit(1);
     }
 
