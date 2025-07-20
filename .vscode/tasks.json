@@ -2,20 +2,27 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Example Task",
-            "type": "shell",
-            "command": "echo",
-            "args": ["Hello, from tasks!"
-            ]
+            "label": "build-typescript-and-sass",
+            "detail": "Runs Typescript and Sass compilers.",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": [
+                "build-typescript",
+                "build-sass"
+            ],
+            "dependsOrder": "parallel"
         },
         {
-            "label": "Echo With Spaces",
+            "label": "build-typescript",
             "type": "shell",
-            "command": "echo",
-            "args": [
-                "argument with spaces",
-                "another one"
-            ]
+            "command": "echo 'Building TypeScript...' && sleep 3"
+        },
+        {
+            "label": "build-sass",
+            "type": "shell",
+            "command": "echo 'Building Sass...' && sleep 2"
         }
     ]
 }

@@ -6,6 +6,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::thread;
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -48,14 +49,49 @@ fn read_tasks_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Task>> {
 
 fn execute_task(task: &Task, all_tasks: &HashMap<String, Task>) -> Result<()> {
     if let Some(dependencies) = &task.depends_on {
-        if task.depends_order.as_deref() == Some("sequence") {
-            for dep_label in dependencies {
-                let dep_task = all_tasks
-                    .get(dep_label)
-                    .context(format!("Dependent task '{dep_label}' not found"))?;
-                println!("\n--> Running dependent task: {dep_label}");
-                execute_task(dep_task, all_tasks)?;
-                println!("\n<-- Finished dependent task: {dep_label}");
+        match task.depends_order.as_deref() {
+            Some("sequence") => {
+                for dep_label in dependencies {
+                    let dep_task = all_tasks
+                        .get(dep_label)
+                        .context(format!("Dependent task '{dep_label}' not found"))?;
+                    println!("\n--> Running dependent task: {dep_label}");
+                    execute_task(dep_task, all_tasks)?;
+                    println!("\n<-- Finished dependent task: {dep_label}");
+                }
+            }
+            Some("parallel") => {
+                let mut handles = vec![];
+                for dep_label in dependencies {
+                    let dep_task = all_tasks
+                        .get(dep_label)
+                        .context(format!("Dependent task '{dep_label}' not found"))?
+                        .clone(); // Clone the task for the new thread
+                    let all_tasks_clone = all_tasks.clone(); // Clone the map for the new thread
+
+                    println!("\n--> Spawning dependent task: {dep_label}");
+                    let handle = thread::spawn(move || {
+                        let result = execute_task(&dep_task, &all_tasks_clone);
+                        println!("\n<-- Finished dependent task: {}", dep_task.label);
+                        result
+                    });
+                    handles.push(handle);
+                }
+
+                for handle in handles {
+                    handle.join().unwrap()?; // Wait for each thread to complete and propagate errors
+                }
+            }
+            _ => {
+                // Default to sequence if dependsOrder is not specified or unknown
+                for dep_label in dependencies {
+                    let dep_task = all_tasks
+                        .get(dep_label)
+                        .context(format!("Dependent task '{dep_label}' not found"))?;
+                    println!("\n--> Running dependent task: {dep_label}");
+                    execute_task(dep_task, all_tasks)?;
+                    println!("\n<-- Finished dependent task: {dep_label}");
+                }
             }
         }
     }
@@ -86,7 +122,7 @@ fn execute_task(task: &Task, all_tasks: &HashMap<String, Task>) -> Result<()> {
 
             let mut cmd = Command::new("sh");
             cmd.arg("-c").arg(&script);
-            cmd.arg(command_name); // This sets $0 for the script
+            cmd.arg(command_name);
             if let Some(args) = &task.args {
                 cmd.args(args);
             }
