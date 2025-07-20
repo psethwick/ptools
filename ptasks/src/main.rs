@@ -1,13 +1,14 @@
 use anyhow::{Context, Result};
+use inquire::Select;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::env;
+
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct Task {
     label: String,
@@ -16,7 +17,13 @@ struct Task {
     options: Option<TaskOptions>,
 }
 
-#[derive(Debug, Deserialize)]
+impl std::fmt::Display for Task {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.label)
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct TaskOptions {
     cwd: Option<String>,
@@ -34,22 +41,8 @@ fn main() -> Result<()> {
     let tasks_json_path = ".vscode/tasks.json";
     let tasks = read_tasks_from_file(tasks_json_path)?;
 
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() == 1 {
-        for task in tasks {
-            println!("{}", task.label);
-        }
-    } else {
-        let label = args[1..].join(" ");
-        if let Some(task) = tasks.into_iter().find(|t| t.label == label) {
-            execute_task(&task)?;
-        } else {
-            println!("Task '{}' not found.", label);
-        }
-    }
-
-    Ok(())
+    let task = Select::new("Select a task to run", tasks).prompt()?;
+    execute_task(&task)
 }
 
 fn read_tasks_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Task>> {
