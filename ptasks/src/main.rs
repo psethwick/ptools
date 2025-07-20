@@ -2,9 +2,8 @@ use anyhow::{Context, Result};
 use inquire::Select;
 use serde::Deserialize;
 use std::collections::HashMap;
-
 use std::fs;
-use std::io::{self, BufRead, Write};
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -33,34 +32,12 @@ struct TaskOptions {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TasksFile {
-    // version: String,
     tasks: Vec<Task>,
 }
 
-fn main() -> Result<()> {
-    let tasks_json_path = ".vscode/tasks.json";
-    let tasks = read_tasks_from_file(tasks_json_path)?;
-
-    let task = Select::new("Select a task to run", tasks).prompt()?;
-    execute_task(&task)
-}
-
 fn read_tasks_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Task>> {
-    let file = fs::File::open(path).context("Failed to open tasks.json")?;
-    let reader = io::BufReader::new(file);
-
-    // Strip comments from the JSON file
-    let mut json_no_comments = String::new();
-    for line in reader.lines() {
-        let line = line?;
-        if !line.trim().starts_with("//") {
-            json_no_comments.push_str(&line);
-            json_no_comments.push('\n');
-        }
-    }
-
-    let tasks_file: TasksFile =
-        serde_json::from_str(&json_no_comments).context("Failed to parse tasks.json")?;
+    let file_content = fs::read_to_string(path).context("Failed to read tasks.json")?;
+    let tasks_file: TasksFile = json5::from_str(&file_content).context("Failed to parse tasks.json")?;
     Ok(tasks_file.tasks)
 }
 
@@ -101,4 +78,12 @@ fn execute_task(task: &Task) -> Result<()> {
 fn set_window_title(title: &str) {
     print!("\u{1b}]0;{}\u{7}", title);
     io::stdout().flush().unwrap();
+}
+
+fn main() -> Result<()> {
+    let tasks_json_path = ".vscode/tasks.json";
+    let tasks = read_tasks_from_file(tasks_json_path)?;
+
+    let task = Select::new("Select a task to run", tasks).prompt()?;
+    execute_task(&task)
 }
