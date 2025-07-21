@@ -80,8 +80,8 @@ async fn process_project(
 
     let date_filter = if let Some(max_modified_date) = max_modified {
         format!(
-            " AND [System.ChangedDate] > '{}'",
-            max_modified_date.format("%Y-%m-%dT%H:%M:%S.%3fZ")
+            " AND [System.ChangedDate] >= '{}'",
+            max_modified_date.format("%Y-%m-%d")
         )
     } else {
         "".to_string()
@@ -111,6 +111,7 @@ async fn process_project(
         .await?
         .json::<Value>()
         .await?;
+    // dbg!(&wiql_response);
 
     let work_item_ids: Vec<String> = wiql_response
         .get("workItems")
@@ -214,11 +215,9 @@ async fn process_project(
             Ok(Ok(data)) => {
                 for work_item in data.work {
                     work_item.save(&mut *tx).await?;
-                    dbg!(work_item);
                 }
                 for person in data.people {
                     person.save(&mut *tx).await?;
-                    dbg!(person);
                 }
             }
             Ok(Err(e)) => {
@@ -248,6 +247,7 @@ impl SourceSync for AzureDevops {
             .await?
             .json()
             .await?;
+        dbg!(&projects_response);
 
         let empty_projects = Vec::new();
         let projects = projects_response["value"]
