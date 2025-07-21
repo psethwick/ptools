@@ -108,9 +108,21 @@ async fn process_project(
         .bearer_auth(pat)
         .json(&wiql_body)
         .send()
-        .await?
-        .json::<Value>()
         .await?;
+
+    if !wiql_response.status().is_success() {
+        let status = wiql_response.status();
+        let text = wiql_response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Could not read error body".to_string());
+        return Err(anyhow!(
+            "Failed to fetch work items from Azure DevOps. Status: {}. Body: {}",
+            status,
+            text
+        ));
+    }
+    let wiql_response: Value = wiql_response.json().await?;
     // dbg!(&wiql_response);
 
     let work_item_ids: Vec<String> = wiql_response
@@ -123,7 +135,7 @@ async fn process_project(
                 .map(|id| id.to_string())
                 .collect()
         })
-        .unwrap_or_else(Vec::new);
+        .unwrap_or_default();
 
     if work_item_ids.is_empty() {
         return Ok(());
@@ -164,10 +176,22 @@ async fn process_project(
                 .get(&batch_url)
                 .bearer_auth(&pat)
                 .send()
-                .await?
-                .json::<AzureDevOpsBatchResponse>()
-                .await?
-                .value;
+                .await?;
+
+            if !batch_response.status().is_success() {
+                let status = batch_response.status();
+                let text = batch_response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Could not read error body".to_string());
+                return Err(anyhow!(
+                    "Failed to fetch work items from Azure DevOps. Status: {}. Body: {}",
+                    status,
+                    text
+                ));
+            }
+
+            let batch_response = batch_response.json::<AzureDevOpsBatchResponse>().await?.value;
 
             let work: Vec<_> = batch_response
                 .iter()
@@ -240,14 +264,29 @@ impl SourceSync for AzureDevops {
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
         );
-        let projects_response: Value = client
+        let projects_response = client
             .get(&projects_url)
             .bearer_auth(&self.pat)
             .send()
-            .await?
-            .json()
             .await?;
-        dbg!(&projects_response);
+
+        if !projects_response.status().is_success() {
+            let status = projects_response.status();
+            let text = projects_response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Could not read error body".to_string());
+            return Err(anyhow!(
+                "Failed to fetch projects from Azure DevOps for org {}. Status: {}. Body: {}, Pat: {}",
+                self.org,
+                status,
+                text,
+                &self.pat
+            ));
+        }
+
+        let projects_response: Value = projects_response.json().await?;
+        // dbg!(&projects_response);
 
         let empty_projects = Vec::new();
         let projects = projects_response["value"]
