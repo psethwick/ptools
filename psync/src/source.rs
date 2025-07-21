@@ -236,7 +236,7 @@ pub enum Sources {
 }
 
 pub async fn get_sources(pool: &SqlitePool) -> Result<Vec<Source>> {
-    let s = sqlx::query_as::<_, Source>("SELECT id, kind, name, secrets FROM source")
+    let s = sqlx::query_as::<_, Source>("SELECT id, kind, name FROM source")
         .fetch_all(pool)
         .await?
         .into_iter()

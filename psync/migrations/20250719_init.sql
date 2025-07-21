@@ -2,7 +2,6 @@ CREATE TABLE source (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind INTEGER NOT NULL,
   name TEXT NOT NULL,
-  secrets TEXT NOT NULL DEFAULT '[]',
   UNIQUE (kind, name)
 );
 
