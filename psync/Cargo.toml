@@ -15,6 +15,10 @@ keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "li
 reqwest = { version = "0.12.20", features = ["json"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+slint = "1.12.1"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "migrate", "chrono", "json"] }
 tokio = { version = "1.45.1", features = ["full"] }
 toml = "0.8.23"
+
+[build-dependencies]
+slint-build = "1.12.1"
