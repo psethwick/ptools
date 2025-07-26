@@ -6,5 +6,5 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 serde = { workspace = true }
+inquire = { workspace = true }
 json5 = "0.4.1"
-inquire = "0.7.5"
