@@ -25,3 +25,5 @@ target/
 
 /target
 .envrc
+psync/lol_files
+psync/lol.html
