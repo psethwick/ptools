@@ -13,6 +13,7 @@ futures = "0.3.31"
 itertools = "0.14.0"
 keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "linux-native"] }
 reqwest = { version = "0.12.20", features = ["json"] }
+rustyline = "16.0.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "migrate", "chrono", "json"] }
