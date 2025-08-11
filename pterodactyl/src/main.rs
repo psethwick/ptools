@@ -2,14 +2,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use anyhow::Result;
-use archae::{
+use egui::X11WindowType;
+use pterodactyl::{
     core::Core,
     everything_box::EverythingBox,
-    picker::{next_picker_by_name, ToCore, ToMeatspace},
+    picker::{ToCore, ToMeatspace, next_picker_by_name},
     state::State,
 };
-use egui::X11WindowType;
-use std::sync::{mpsc::channel, Arc};
+use std::sync::{Arc, mpsc::channel};
 use tokio::runtime::Runtime;
 
 use clap::{Parser, Subcommand};
@@ -68,7 +68,7 @@ fn main() -> Result<(), eframe::Error> {
 
         // win/mac detection works, will probably default to
         // dark for other people but right now I'm the only user
-        default_theme: eframe::Theme::Light,
+        // default_theme: eframe::Theme::Light,
         ..Default::default()
     };
 
@@ -88,7 +88,7 @@ fn main() -> Result<(), eframe::Error> {
     //         })
     //         .collect();
     //     eframe::run_native(
-    //         "Archae",
+    //         "Pterry",
     //         options,
     //         Box::new(|cc| {
     //             egui_extras::install_image_loaders(&cc.egui_ctx);
@@ -97,11 +97,11 @@ fn main() -> Result<(), eframe::Error> {
     //     )
     // } else {
     eframe::run_native(
-        "Archae",
+        "Pterry",
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Box::<EverythingBox>::new(EverythingBox::new(cc, itx, crx))
+            Ok(Box::<EverythingBox>::new(EverythingBox::new(cc, itx, crx)))
         }),
     )
     // }

@@ -6,7 +6,6 @@ use crate::{
     emoji::Emoji,
     language::Verb,
     notes::Notes,
-    picker,
     picker::{ListItem, Picker, VerbHandler},
 };
 
@@ -20,7 +19,7 @@ impl Picker for Core {
     }
 
     fn cacheable(&self) -> Option<Vec<ListItem>> {
-        let mut subs: Vec<_> = self
+        let subs: Vec<_> = self
             .default_extensions
             .iter()
             .filter_map(|p| p.cacheable())
@@ -36,11 +35,7 @@ impl Picker for Core {
                 res.extend(d);
             }
         }
-        if res.is_empty() {
-            None
-        } else {
-            Some(res)
-        }
+        if res.is_empty() { None } else { Some(res) }
     }
 
     fn verbs(&self) -> Option<Vec<(Verb, VerbHandler)>> {
