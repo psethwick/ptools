@@ -3647,7 +3647,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pterodactyl"
+name = "pterry"
 version = "0.1.0"
 dependencies = [
  "anyhow",
