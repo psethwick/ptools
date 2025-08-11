@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use egui::X11WindowType;
-use pterodactyl::{
+use pterry::{
     core::Core,
     everything_box::EverythingBox,
     picker::{ToCore, ToMeatspace, next_picker_by_name},
@@ -66,12 +66,17 @@ fn main() -> Result<(), eframe::Error> {
             .with_window_type(X11WindowType::Dialog),
         centered: true,
 
-        // win/mac detection works, will probably default to
-        // dark for other people but right now I'm the only user
-        // default_theme: eframe::Theme::Light,
         ..Default::default()
     };
 
+    // TODO: this is probably its own tool?
+    //  or maybe it isn't
+    //  what should it do
+    //  display data?
+    //  plot?
+    //  I sort of like the instant widget idea from <stuff>
+    //  maybe it could pipe stuff back out over stdout?
+    //
     // if let Some(Mode::View) = args2.command {
     //     let lines: Vec<_> = std::io::stdin()
     //         .lines()
@@ -101,6 +106,9 @@ fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+            if cc.egui_ctx.system_theme().is_none() {
+                cc.egui_ctx.set_theme(egui::Theme::Light);
+            }
             Ok(Box::<EverythingBox>::new(EverythingBox::new(cc, itx, crx)))
         }),
     )
