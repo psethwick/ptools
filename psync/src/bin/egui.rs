@@ -1,7 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 use eframe::egui;
+use psync::source::Source;
 use sqlx::{Pool, Sqlite, SqlitePool, migrate};
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, mpsc::channel},
+};
+use tokio::runtime::Runtime;
 
 fn get_data_dir() -> anyhow::Result<PathBuf> {
     let data_dir =
@@ -12,7 +17,8 @@ fn get_data_dir() -> anyhow::Result<PathBuf> {
 fn main() -> eframe::Result {
     env_logger::init();
 
-    let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+    let rt = Runtime::new().expect("Failed to create Tokio runtime");
+    let _enter = rt.enter();
 
     let pool = rt
         .block_on(async {
@@ -40,9 +46,9 @@ fn main() -> eframe::Result {
                 cc.egui_ctx.set_theme(egui::Theme::Light);
             }
             let app = MyApp {
-                pool,
-                name: "Arthur".to_string(),
-                age: 42,
+                // pool,
+                names: vec![],
+                sources: vec![],
             };
 
             Ok(Box::new(app))
@@ -51,9 +57,8 @@ fn main() -> eframe::Result {
 }
 
 struct MyApp {
-    pool: Pool<Sqlite>,
-    name: String,
-    age: u32,
+    names: Vec<String>,
+    sources: Vec<Source>,
 }
 
 impl eframe::App for MyApp {
@@ -62,14 +67,14 @@ impl eframe::App for MyApp {
             ui.heading("My egui Application");
             ui.horizontal(|ui| {
                 let name_label = ui.label("Your name: ");
-                ui.text_edit_singleline(&mut self.name)
-                    .labelled_by(name_label.id);
+                // ui.text_edit_singleline(&mut self.name)
+                //     .labelled_by(name_label.id);
             });
-            ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
-            if ui.button("Increment").clicked() {
-                self.age += 1;
-            }
-            ui.label(format!("Hello '{}', age {}", self.name, self.age));
+            // ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
+            // if ui.button("Increment").clicked() {
+            //     self.age += 1;
+            // }
+            // ui.label(format!("Hello '{}', age {}", self.name, self.age));
         });
     }
 }

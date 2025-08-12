@@ -1,7 +1,6 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use anyhow::Result;
 use egui::X11WindowType;
 use pterry::{
     core::Core,
@@ -25,7 +24,7 @@ enum Mode {
     Picker { name: String },
 }
 
-fn main() -> Result<(), eframe::Error> {
+fn main() -> eframe::Result {
     env_logger::init();
     let args = Cli::parse();
     let rt = Runtime::new().expect("Unable to create Runtime");
