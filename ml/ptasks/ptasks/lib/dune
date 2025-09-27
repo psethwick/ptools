@@ -1,0 +1,5 @@
+(library
+ (public_name ptasks_lib)
+ (name ptasks_lib)
+ (libraries lwt lwt.unix yojson)
+ (preprocess (pps lwt_ppx)))
