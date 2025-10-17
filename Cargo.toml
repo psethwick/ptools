@@ -4,6 +4,7 @@ members = [
     "psync",
     "ptasks",
     "pterry",
+    "ptime",
 ]
 
 [workspace.dependencies]
@@ -18,7 +19,4 @@ chrono = { version = "0.4.41", features = ["serde"] }
 egui = "0.32.0"
 eframe = "0.32.0"
 egui_extras = "0.32.0"
-env_logger = { version = "0.10", default-features = false, features = [
-    "auto-color",
-    "humantime",
-] }
+env_logger = { version = "0.10", default-features = false, features = [ "auto-color", "humantime", ] }
