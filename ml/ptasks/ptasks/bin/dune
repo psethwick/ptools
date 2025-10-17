@@ -1,5 +1,0 @@
-(executable
- (public_name ptasks)
- (name main)
- (libraries ptasks_lib lwt lwt.unix)
- (preprocess (pps lwt_ppx)))

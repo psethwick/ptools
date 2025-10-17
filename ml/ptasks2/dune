@@ -1,4 +1,0 @@
-(executable
- (name main)
- (libraries lwt lwt.unix yojson yojson-five)
- (preprocess (pps lwt_ppx)))
