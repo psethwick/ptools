@@ -37,11 +37,28 @@ fn parse_client(i: &str) -> IResult<&str, &str> {
     recognize(many1(alt((alphanumeric1, tag("-")))))(i)
 }
 
+fn parse_jira_tag(i: &str) -> IResult<&str, &str> {
+    recognize(tuple((alphanumeric1, tag("-"), digit1)))(i)
+}
+
 fn parse_entry_details(i: &str) -> IResult<&str, (EntryType, Option<usize>)> {
     alt((
         map(
             tuple((tag("break"), tag("\n"), peek_parse_time)),
             |(_, _, end)| (EntryType::Break, end),
+        ),
+        map(
+            tuple((parse_jira_tag, peek_parse_time)),
+            |(jira_tag, end)| {
+                (
+                    EntryType::Work {
+                        client: "".to_string(),
+                        task: "".to_string(),
+                        ticket_id: Some(jira_tag.to_string()),
+                    },
+                    end,
+                )
+            },
         ),
         map(
             tuple((
@@ -196,6 +213,26 @@ mod tests {
                     entry_type: EntryType::Work {
                         client: "client".to_string(),
                         task: "task".to_string(),
+                        ticket_id: Some("CT-1234".to_string())
+                    }
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn t_parse_ticket_first_plus_comments() {
+        let t: &str = "1000 CT-1234\nfree text do whatever";
+        assert_eq!(
+            parse_entry(t),
+            Ok((
+                "free text do whatever",
+                Entry {
+                    start: 1000,
+                    end: None,
+                    entry_type: EntryType::Work {
+                        client: "".to_string(),
+                        task: "".to_string(),
                         ticket_id: Some("CT-1234".to_string())
                     }
                 }
