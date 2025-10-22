@@ -9,7 +9,7 @@ use sqlx::{Database, Decode, Encode, Executor, FromRow, Sqlite, SqlitePool, Type
 use std::fmt::Display;
 
 #[async_trait]
-pub trait SourceSync: Send + Sync {
+pub trait RemoteSync: Send + Sync {
     async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<()>;
 }
 

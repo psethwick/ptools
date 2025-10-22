@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use clap::{self, Parser, Subcommand};
 use psync::SERVICE_NAME;
-use psync::source::{Kind, Source, Work, get_sources, remove_source};
+use psync::remote::{Kind, Source, Work, get_sources, remove_source};
 use sqlx::{SqlitePool, migrate};
 use std::path::PathBuf;
 use tokio::task::JoinSet;

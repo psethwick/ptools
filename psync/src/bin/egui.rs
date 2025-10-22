@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 use eframe::egui;
-use psync::source::Source;
+use psync::remote::Source;
 use sqlx::{Pool, Sqlite, SqlitePool, migrate};
 use std::{
     path::PathBuf,

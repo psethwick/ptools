@@ -1,5 +1,5 @@
-use crate::source::{Data, Person, Work};
-use crate::source::{SourceSync, get_max_modified};
+use crate::remote::{Data, Person, Work};
+use crate::remote::{RemoteSync, get_max_modified};
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -215,7 +215,7 @@ async fn process_project(
 }
 
 #[async_trait]
-impl SourceSync for Jira {
+impl RemoteSync for Jira {
     async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<(), Error> {
         let projects_url = format!("https://{}.atlassian.net/rest/api/3/project", self.domain);
         let projects_response: Vec<Value> = client
