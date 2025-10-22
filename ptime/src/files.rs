@@ -52,7 +52,7 @@ mod tests {
     use tempfile::tempdir;
     fn with_ts_base(closure: fn(p: PathBuf) -> ()) -> Result<(), Error> {
         let temp_dir = tempdir()?;
-        let path = temp_dir.into_path();
+        let path = temp_dir.keep();
         let path_str = format!("{}", path.to_str().unwrap());
         with_var("TIMESHEET_BASE_FOLDER", Some(path_str), || {
             closure(path.clone())
