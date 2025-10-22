@@ -2,6 +2,8 @@ use chrono::NaiveDate;
 use itertools::Itertools;
 use serde::Serialize;
 
+    // TODO: client and task should maybe also be Option?
+    // or maybe I need a third variant?
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum EntryType {
     #[serde(rename = "break")]
