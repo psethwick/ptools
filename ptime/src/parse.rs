@@ -52,7 +52,8 @@ fn parse_entry_details(i: &str) -> IResult<&str, (EntryType, Option<usize>)> {
             |(jira_tag, end)| {
                 (
                     EntryType::Work {
-                        client: "".to_string(),
+                        // HAX .. temp fix for reporting
+                        client: jira_tag.to_string(),
                         task: "".to_string(),
                         ticket_id: Some(jira_tag.to_string()),
                     },
@@ -231,7 +232,7 @@ mod tests {
                     start: 1000,
                     end: None,
                     entry_type: EntryType::Work {
-                        client: "".to_string(),
+                        client: "CT-1234".to_string(),
                         task: "".to_string(),
                         ticket_id: Some("CT-1234".to_string())
                     }
