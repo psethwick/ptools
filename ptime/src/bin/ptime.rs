@@ -1,7 +1,9 @@
 use chrono::{Datelike, Duration, Local, Months, NaiveDate, Weekday};
 use clap::{self, Parser, Subcommand};
-use ptime::entries::Day;
+use ptime::entries::{Day, JiraDetails};
 use ptime::files::{add_today_entry, get_today_path};
+use std::env;
+
 #[derive(Debug, Parser)]
 #[command(name = "ptime")]
 #[command(about = "Managing your timesheets", long_about = None)]
@@ -41,7 +43,13 @@ fn parse_date(i: &str) -> NaiveDate {
     }
 }
 
-fn report_range(start: NaiveDate, end: NaiveDate, client_filter: Option<&str>, sync: bool) {
+async fn report_range(
+    start: NaiveDate,
+    end: NaiveDate,
+    client_filter: Option<&str>,
+    sync: bool,
+    jira_details: &JiraDetails,
+) {
     assert!(start < end, "start date must be before end date");
     let mut total_work: f64 = 0.0;
 
@@ -51,7 +59,9 @@ fn report_range(start: NaiveDate, end: NaiveDate, client_filter: Option<&str>, s
         if let Some(d) = day {
             print!("{}", d.report_str(client_filter));
             if sync {
-                d.sync();
+                if let Err(e) = d.sync(&jira_details).await {
+                    eprintln!("Sync failed for date {}: {}\n", s, e);
+                }
             }
             total_work += d.total_work(client_filter);
         }
@@ -60,14 +70,21 @@ fn report_range(start: NaiveDate, end: NaiveDate, client_filter: Option<&str>, s
     println!("total work: {total_work}");
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Cli::parse();
+
+    let jira_details = JiraDetails {
+        url: env::var("JIRA_URL").unwrap(),
+        username: env::var("JIRA_USER").unwrap(),
+        password: env::var("JIRA_PASSWORD").unwrap(),
+    };
 
     match args.command {
         Commands::Range { start, end } => {
             let s = parse_date(&start);
             let e = parse_date(&end);
-            report_range(s, e, args.client.as_deref(), args.sync)
+            report_range(s, e, args.client.as_deref(), args.sync, &jira_details).await
         }
         Commands::Week => {
             let today = Local::now().date_naive();
@@ -77,7 +94,7 @@ fn main() {
             }
             let end = start + Duration::days(4);
             // start = Monday, end = Friday
-            report_range(start, end, args.client.as_deref(), args.sync)
+            report_range(start, end, args.client.as_deref(), args.sync, &jira_details).await
         }
         Commands::Month => {
             let today = Local::now().date_naive();
@@ -89,7 +106,7 @@ fn main() {
             end = end.checked_add_months(Months::new(1)).unwrap();
             end -= Duration::days(1);
 
-            report_range(start, end, args.client.as_deref(), args.sync);
+            report_range(start, end, args.client.as_deref(), args.sync, &jira_details).await;
         }
         Commands::Day { date } => {
             let day = Day::new(match date {
@@ -97,14 +114,15 @@ fn main() {
                 None => Local::now().date_naive(),
             });
 
-            match day {
-                Some(d) => {
-                    println!("{}", d.report_str(args.client.as_deref()));
-                    if args.sync {
-                        d.sync();
+            if let Some(d) = day {
+                println!("{}", d.report_str(args.client.as_deref()));
+                if args.sync {
+                    if let Err(e) = d.sync(&jira_details).await {
+                        eprintln!("Sync failed: {}", e);
                     }
                 }
-                None => println!("nothing to see here, boss"),
+            } else {
+                println!("nothing to see here, boss");
             }
         }
         Commands::Add { time, details } => {
@@ -113,8 +131,8 @@ fn main() {
                     .collect();
             let entry = format!("{time} {joined_deets}");
             match add_today_entry(&entry) {
-                Ok(()) => {}
-                Err(e) => println!("{e:?}"),
+                Ok(()) => {} // No-op on success
+                Err(_e) => println!("{_e:?}"),
             }
         }
         Commands::Path => {

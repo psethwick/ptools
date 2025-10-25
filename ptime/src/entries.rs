@@ -1,6 +1,6 @@
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // TODO: client and task should maybe also be Option?
 // or maybe I need a third variant?
@@ -54,6 +54,36 @@ pub struct Report {
     total: f64,
 }
 
+#[derive(Deserialize, Debug)]
+struct Author {
+    name: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct Worklog {
+    author: Author,
+    id: String,
+    started: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Worklogs {
+    worklogs: Vec<Worklog>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NewWorklog {
+    time_spent_seconds: u64,
+}
+
+pub struct JiraDetails {
+    pub username: String,
+    pub url: String,
+    pub password: String,
+}
+
 impl Day {
     pub fn total_work(&self, client_filter: Option<&str>) -> f64 {
         self.entries
@@ -67,7 +97,9 @@ impl Day {
             .sum()
     }
 
-    pub fn sync(&self) {
+    pub async fn sync(&self, jira_details: &JiraDetails) -> Result<(), reqwest::Error> {
+        let client = reqwest::Client::new();
+
         for (ticket_id, duration) in self
             .entries
             .iter()
@@ -80,12 +112,56 @@ impl Day {
             })
             .into_group_map()
         {
-            println!(
-                "{} {ticket_id}, {}",
-                self.date,
-                duration.iter().sum::<f64>()
-            );
+            let total_seconds = (duration.iter().sum::<f64>() * 3600.0) as u64;
+
+            let worklogs_url =
+                format!("{}/rest/api/2/issue/{ticket_id}/worklog", &jira_details.url);
+
+            let worklogs = client
+                .get(&worklogs_url)
+                .basic_auth(&jira_details.username, Some(&jira_details.password))
+                .send()
+                .await?
+                .json::<Worklogs>()
+                .await?;
+            dbg!(&worklogs);
+
+            let existing_worklog = worklogs.worklogs.iter().find(|w| {
+                if w.author.name != jira_details.username {
+                    return false;
+                }
+                if let Ok(started_date) = NaiveDate::parse_from_str(&w.started[0..10], "%Y-%m-%d") {
+                    return started_date.year() == self.date.year()
+                        && started_date.month() == self.date.month()
+                        && started_date.day() == self.date.day();
+                }
+                false
+            });
+
+            let worklog_body = NewWorklog {
+                time_spent_seconds: total_seconds,
+            };
+
+            if let Some(existing) = existing_worklog {
+                let update_url = format!("{worklogs_url}/{}", existing.id);
+                println!("Updating worklog for {ticket_id}: {total_seconds}s");
+                // client
+                //     .put(update_url)
+                //     .basic_auth(username, Some(password))
+                //     .json(&worklog_body)
+                //     .send()
+                //     .await?;
+            } else {
+                println!("Creating new worklog for {ticket_id}: {total_seconds}s");
+                // client
+                //     .post(worklogs_url)
+                //     .basic_auth(username, Some(password))
+                //     .json(&worklog_body)
+                //     .send()
+                //     .await?;
+            }
         }
+        Ok(())
     }
 
     pub fn report_str(&self, client_filter: Option<&str>) -> String {
@@ -95,7 +171,12 @@ impl Day {
         if total == 0.0 {
             return result;
         }
-        result.push_str(&format!("{}: {}\n", self.date.format("%A, %d %B"), total));
+        result.push_str(&format!(
+            "{}: {}
+",
+            self.date.format("%A, %d %B"),
+            total
+        ));
 
         for (client, task_duration) in self
             .entries
@@ -118,7 +199,7 @@ impl Day {
             let client_total: f64 = task_duration.iter().map(|(_, duration)| duration).sum();
             result.push_str(&format!("  {client}:  {client_total}\n"));
             for (task, durations) in task_duration.iter().cloned().into_group_map() {
-                if task != "" {
+                if !task.is_empty() {
                     result.push_str(&format!(
                         "    {}:  {}\n",
                         task,
