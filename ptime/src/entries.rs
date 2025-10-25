@@ -67,47 +67,25 @@ impl Day {
             .sum()
     }
 
-    // todo rewrite the report_str function to use this
-    pub fn report(&self, client_filter: Option<&str>) -> Report {
-        let mut result = Report {
-            total: self.total_work(client_filter),
-            groups: vec![],
-        };
-        if result.total == 0.0 {
-            return result;
-        }
-
-        for (client, task_duration) in self
+    pub fn sync(&self) {
+        for (ticket_id, duration) in self
             .entries
             .iter()
-            .filter(|e| matches!(e.entry_type, EntryType::Work { .. }))
-            .map(move |e| -> (&str, (&str, f64)) {
-                match &e.entry_type {
-                    EntryType::Work {
-                        client,
-                        task,
-                        ticket_id: _,
-                    } => (client, (task, e.duration().unwrap_or(0.0))),
-                    _ => panic!("this shouldn't happen, we filtered already"),
+            .filter(|e| e.end.is_some())
+            .filter_map(|e| match &e.entry_type {
+                EntryType::Work { ticket_id, .. } => {
+                    ticket_id.clone().and_then(|t| e.duration().map(|d| (t, d)))
                 }
+                _ => None,
             })
-            .filter(|(client, _)| client_filter.is_none() || &client_filter.unwrap() == client)
             .into_group_map()
         {
-            let mut group = Group {
-                client: client.to_string(),
-                total: task_duration.iter().map(|(_, duration)| duration).sum(),
-                entries: vec![],
-            };
-            for (task, durations) in task_duration.iter().cloned().into_group_map() {
-                group.entries.push(Task {
-                    desc: task.to_string(),
-                    total: durations.iter().cloned().sum::<f64>(),
-                });
-            }
-            result.groups.push(group);
+            println!(
+                "{} {ticket_id}, {}",
+                self.date,
+                duration.iter().sum::<f64>()
+            );
         }
-        result
     }
 
     pub fn report_str(&self, client_filter: Option<&str>) -> String {
@@ -122,18 +100,19 @@ impl Day {
         for (client, task_duration) in self
             .entries
             .iter()
-            .filter(|e| matches!(e.entry_type, EntryType::Work { .. }) && e.end.is_some())
-            .map(move |e| -> (&str, (&str, f64)) {
-                match &e.entry_type {
-                    EntryType::Work {
-                        client,
-                        task,
-                        ticket_id: _,
-                    } => (client, (task, e.duration().unwrap_or(0.0))),
-                    _ => panic!("this shouldn't happen, we filtered already"),
-                }
+            .filter(|e| e.end.is_some())
+            .filter_map(|e| match &e.entry_type {
+                EntryType::Work {
+                    client,
+                    task,
+                    ticket_id: _,
+                } => Some((
+                    client.as_str(),
+                    (task.as_str(), e.duration().unwrap_or(0.0)),
+                )),
+                _ => None,
             })
-            .filter(|(client, _)| client_filter.is_none() || &client_filter.unwrap() == client)
+            .filter(|(client, _)| client_filter.is_none() || client_filter.as_ref() == Some(client))
             .into_group_map()
         {
             let client_total: f64 = task_duration.iter().map(|(_, duration)| duration).sum();

@@ -9,7 +9,7 @@ struct Cli {
     #[arg(short = 'c', long)]
     client: Option<String>,
     #[arg(short = 's', long)]
-    sync: Option<bool>,
+    sync: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -41,7 +41,7 @@ fn parse_date(i: &str) -> NaiveDate {
     }
 }
 
-fn report_range(start: NaiveDate, end: NaiveDate, client_filter: Option<&str>) {
+fn report_range(start: NaiveDate, end: NaiveDate, client_filter: Option<&str>, sync: bool) {
     assert!(start < end, "start date must be before end date");
     let mut total_work: f64 = 0.0;
 
@@ -50,6 +50,9 @@ fn report_range(start: NaiveDate, end: NaiveDate, client_filter: Option<&str>) {
         let day = Day::new(s);
         if let Some(d) = day {
             print!("{}", d.report_str(client_filter));
+            if sync {
+                d.sync();
+            }
             total_work += d.total_work(client_filter);
         }
         s += Duration::days(1);
@@ -64,7 +67,7 @@ fn main() {
         Commands::Range { start, end } => {
             let s = parse_date(&start);
             let e = parse_date(&end);
-            report_range(s, e, args.client.as_deref())
+            report_range(s, e, args.client.as_deref(), args.sync)
         }
         Commands::Week => {
             let today = Local::now().date_naive();
@@ -74,7 +77,7 @@ fn main() {
             }
             let end = start + Duration::days(4);
             // start = Monday, end = Friday
-            report_range(start, end, args.client.as_deref())
+            report_range(start, end, args.client.as_deref(), args.sync)
         }
         Commands::Month => {
             let today = Local::now().date_naive();
@@ -86,7 +89,7 @@ fn main() {
             end = end.checked_add_months(Months::new(1)).unwrap();
             end -= Duration::days(1);
 
-            report_range(start, end, args.client.as_deref());
+            report_range(start, end, args.client.as_deref(), args.sync);
         }
         Commands::Day { date } => {
             let day = Day::new(match date {
@@ -97,6 +100,9 @@ fn main() {
             match day {
                 Some(d) => {
                     println!("{}", d.report_str(args.client.as_deref()));
+                    if args.sync {
+                        d.sync();
+                    }
                 }
                 None => println!("nothing to see here, boss"),
             }
@@ -112,9 +118,7 @@ fn main() {
             }
         }
         Commands::Path => {
-            let path = get_today_path();
-            let d = path.display();
-            println!("{d}");
+            println!("{}", get_today_path().display());
         }
     }
 }
