@@ -2,13 +2,13 @@ use crate::entries::*;
 use crate::files::get_day_contents;
 use chrono::NaiveDate;
 use nom::{
+    IResult,
     branch::alt,
     bytes::complete::tag,
     character::complete::{alphanumeric1, digit1, not_line_ending},
     combinator::{map, map_res, not, opt, peek, recognize, value},
     multi::{many0, many1},
     sequence::{preceded, tuple},
-    IResult,
 };
 use std::num::ParseIntError;
 use std::str::FromStr;

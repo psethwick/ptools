@@ -1,7 +1,7 @@
 use crate::entries::Day;
 use crate::parse::parse_time;
-use chrono::naive::NaiveDate;
 use chrono::Local;
+use chrono::naive::NaiveDate;
 use std::{
     env, fs,
     io::{Error, Write},

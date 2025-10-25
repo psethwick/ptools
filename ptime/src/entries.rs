@@ -2,14 +2,18 @@ use chrono::NaiveDate;
 use itertools::Itertools;
 use serde::Serialize;
 
-    // TODO: client and task should maybe also be Option?
-    // or maybe I need a third variant?
+// TODO: client and task should maybe also be Option?
+// or maybe I need a third variant?
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub enum EntryType {
     #[serde(rename = "break")]
     Break,
     #[serde(rename = "work")]
-    Work { client: String, task: String, ticket_id: Option<String> },
+    Work {
+        client: String,
+        task: String,
+        ticket_id: Option<String>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -34,7 +38,7 @@ pub struct Day {
 #[derive(Serialize)]
 pub struct Task {
     desc: String,
-    total: f64
+    total: f64,
 }
 
 #[derive(Serialize)]
@@ -54,16 +58,21 @@ impl Day {
     pub fn total_work(&self, client_filter: Option<&str>) -> f64 {
         self.entries
             .iter()
-            .filter(|e| matches!(&e.entry_type, 
+            .filter(|e| {
+                matches!(&e.entry_type,
                 EntryType::Work { client, .. }
-                    if client_filter.is_none() || client_filter.unwrap() == client))
+                    if client_filter.is_none() || client_filter.unwrap() == client)
+            })
             .map(|e| e.duration().unwrap_or(0.0))
             .sum()
     }
 
     // todo rewrite the report_str function to use this
     pub fn report(&self, client_filter: Option<&str>) -> Report {
-        let mut result = Report{ total: self.total_work(client_filter), groups: vec![] };
+        let mut result = Report {
+            total: self.total_work(client_filter),
+            groups: vec![],
+        };
         if result.total == 0.0 {
             return result;
         }
@@ -74,17 +83,27 @@ impl Day {
             .filter(|e| matches!(e.entry_type, EntryType::Work { .. }))
             .map(move |e| -> (&str, (&str, f64)) {
                 match &e.entry_type {
-                    EntryType::Work { client, task, ticket_id: _ } => (client, (task, e.duration().unwrap_or(0.0))),
+                    EntryType::Work {
+                        client,
+                        task,
+                        ticket_id: _,
+                    } => (client, (task, e.duration().unwrap_or(0.0))),
                     _ => panic!("this shouldn't happen, we filtered already"),
                 }
             })
             .filter(|(client, _)| client_filter.is_none() || &client_filter.unwrap() == client)
             .into_group_map()
         {
-            let mut group = Group {client:  client.to_string(), total:task_duration.iter().map(|(_, duration)| duration).sum(),
-                    entries: vec![]};
+            let mut group = Group {
+                client: client.to_string(),
+                total: task_duration.iter().map(|(_, duration)| duration).sum(),
+                entries: vec![],
+            };
             for (task, durations) in task_duration.iter().cloned().into_group_map() {
-                    group.entries.push(Task { desc: task.to_string(), total: durations.iter().cloned().sum::<f64>() });
+                group.entries.push(Task {
+                    desc: task.to_string(),
+                    total: durations.iter().cloned().sum::<f64>(),
+                });
             }
             result.groups.push(group);
         }
@@ -106,7 +125,11 @@ impl Day {
             .filter(|e| matches!(e.entry_type, EntryType::Work { .. }) && e.end.is_some())
             .map(move |e| -> (&str, (&str, f64)) {
                 match &e.entry_type {
-                    EntryType::Work { client, task, ticket_id: _ } => (client, (task, e.duration().unwrap_or(0.0))),
+                    EntryType::Work {
+                        client,
+                        task,
+                        ticket_id: _,
+                    } => (client, (task, e.duration().unwrap_or(0.0))),
                     _ => panic!("this shouldn't happen, we filtered already"),
                 }
             })
@@ -116,7 +139,13 @@ impl Day {
             let client_total: f64 = task_duration.iter().map(|(_, duration)| duration).sum();
             result.push_str(&format!("  {client}:  {client_total}\n"));
             for (task, durations) in task_duration.iter().cloned().into_group_map() {
-                result.push_str(&format!("    {}:  {}\n", task, durations.iter().cloned().sum::<f64>()));
+                if task != "" {
+                    result.push_str(&format!(
+                        "    {}:  {}\n",
+                        task,
+                        durations.iter().cloned().sum::<f64>()
+                    ));
+                }
             }
         }
         result.push('\n');
