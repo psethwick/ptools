@@ -56,7 +56,10 @@ pub struct Report {
 
 #[derive(Deserialize, Debug)]
 struct Author {
+    #[serde(rename = "displayName")]
     name: String,
+    #[serde(rename = "accountId")]
+    account_id: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -100,6 +103,25 @@ impl Day {
     pub async fn sync(&self, jira_details: &JiraDetails) -> Result<(), reqwest::Error> {
         let client = reqwest::Client::new();
 
+        // Fetch current user's accountId for accurate worklog filtering
+        let myself_url = format!("{}/rest/api/2/myself", &jira_details.url);
+        let myself_response = client
+            .get(&myself_url)
+            .basic_auth(&jira_details.username, Some(&jira_details.password))
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+        let current_user_account_id = myself_response["accountId"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                reqwest::Error::from(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Failed to get accountId from /myself endpoint",
+                ))
+            })?;
+
         for (ticket_id, duration) in self
             .entries
             .iter()
@@ -127,7 +149,8 @@ impl Day {
             dbg!(&worklogs);
 
             let existing_worklog = worklogs.worklogs.iter().find(|w| {
-                if w.author.name != jira_details.username {
+                // Compare account_id to accurately identify worklogs by the current user
+                if w.author.account_id.as_ref() != Some(&current_user_account_id) {
                     return false;
                 }
                 if let Ok(started_date) = NaiveDate::parse_from_str(&w.started[0..10], "%Y-%m-%d") {
