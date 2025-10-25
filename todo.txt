@@ -1,1 +1,0 @@
-get egui frontend to psync db / crate working (steal the channel impl from pterry)

@@ -3,11 +3,13 @@ use clap::{self, Parser, Subcommand};
 use timesheet::entries::Day;
 use timesheet::files::{add_today_entry, get_today_path};
 #[derive(Debug, Parser)]
-#[command(name = "ts")]
+#[command(name = "ptime")]
 #[command(about = "Managing your timesheets", long_about = None)]
 struct Cli {
     #[arg(short = 'c', long)]
     client: Option<String>,
+    #[arg(short = 's', long)]
+    sync: Option<bool>,
     #[command(subcommand)]
     command: Commands,
 }
