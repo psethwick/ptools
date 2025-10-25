@@ -1,7 +1,7 @@
 use chrono::{Datelike, Duration, Local, Months, NaiveDate, Weekday};
 use clap::{self, Parser, Subcommand};
-use timesheet::entries::Day;
-use timesheet::files::{add_today_entry, get_today_path};
+use ptime::entries::Day;
+use ptime::files::{add_today_entry, get_today_path};
 #[derive(Debug, Parser)]
 #[command(name = "ptime")]
 #[command(about = "Managing your timesheets", long_about = None)]
