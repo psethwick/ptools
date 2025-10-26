@@ -62,7 +62,7 @@ struct JiraSearchResponse {
 }
 
 async fn process_project(
-    source_id: i64,
+    remote_id: i64,
     client: &Client,
     domain: &str,
     user: &str,
@@ -73,7 +73,7 @@ async fn process_project(
     let project_key = project["key"]
         .as_str()
         .ok_or_else(|| anyhow!("Project key not found"))?;
-    let max_modified = get_max_modified(pool, project_key, source_id).await?;
+    let max_modified = get_max_modified(pool, project_key, remote_id).await?;
 
     let date_filter = if let Some(max_modified_date) = max_modified {
         format!(
@@ -131,7 +131,7 @@ async fn process_project(
                 .issues
                 .iter()
                 .map(|issue| Work {
-                    source_id,
+                    remote_id,
                     id: issue.id.clone(),
                     version: None,
                     url: Some(issue.url.clone()),
@@ -174,7 +174,7 @@ async fn process_project(
                     .into_iter()
                     .flatten()
                     .map(|p| Person {
-                        source_id,
+                        remote_id,
                         id: p.account_id.clone(),
                         name: p.display_name.clone(),
                     })
@@ -212,7 +212,7 @@ async fn process_project(
 
 #[async_trait]
 impl RemoteSync for Jira {
-    async fn sync(&self, client: &Client, source_id: i64) -> Result<Data, Error> {
+    async fn sync(&self, client: &Client, remote_id: i64) -> Result<Data, Error> {
         let projects_url = format!("https://{}.atlassian.net/rest/api/3/project", self.domain);
         let projects_response: Vec<Value> = client
             .get(&projects_url)
@@ -232,7 +232,7 @@ impl RemoteSync for Jira {
 
             set.spawn(async move {
                 process_project(
-                    source_id,
+                    remote_id,
                     &client,
                     &domain,
                     &user,

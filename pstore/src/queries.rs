@@ -1,21 +1,21 @@
-use crate::models::{Source, Work, Person, Kind, Timesheet};
+use crate::models::{Remote, Work, Person, Kind, Timesheet};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{Executor, Sqlite, SqlitePool};
 use keyring::Entry;
 use crate::SERVICE_NAME;
 
-pub async fn get_sources(pool: &SqlitePool) -> Result<Vec<Source>> {
-    let s = sqlx::query_as::<_, Source>("SELECT id, kind, name FROM source")
+pub async fn get_remotes(pool: &SqlitePool) -> Result<Vec<Remote>> {
+    let s = sqlx::query_as::<_, Remote>("SELECT id, kind, name FROM remote")
         .fetch_all(pool)
         .await?;
     Ok(s)
 }
 
-pub async fn remove_source(pool: &SqlitePool, sc_to_remove: &Source) -> Result<()> {
-    delete_password(sc_to_remove)?;
-    sqlx::query("DELETE FROM source WHERE id=?")
-        .bind(sc_to_remove.id)
+pub async fn remove_remote(pool: &SqlitePool, remote_to_remove: &Remote) -> Result<()> {
+    delete_password(remote_to_remove)?;
+    sqlx::query("DELETE FROM remote WHERE id=?")
+        .bind(remote_to_remove.id)
         .execute(pool)
         .await?;
     Ok(())
@@ -24,12 +24,12 @@ pub async fn remove_source(pool: &SqlitePool, sc_to_remove: &Source) -> Result<(
 pub async fn get_max_modified(
     pool: &SqlitePool,
     project: &str,
-    source_id: i64,
+    remote_id: i64,
 ) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
     let max_modified = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
-        r#"SELECT MAX(modified) FROM work WHERE source_id = ? and project = ?"#,
+        r#"SELECT MAX(modified) FROM work WHERE remote_id = ? and project = ?"#,
     )
-    .bind(source_id)
+    .bind(remote_id)
     .bind(project)
     .fetch_one(pool)
     .await?;
@@ -37,8 +37,8 @@ pub async fn get_max_modified(
     Ok(max_modified)
 }
 
-pub async fn add_source(pool: &SqlitePool, kind: Kind, name: &str, password: String) -> Result<()> {
-    sqlx::query("INSERT OR REPLACE INTO source (kind, name) VALUES (?, ?)")
+pub async fn add_remote(pool: &SqlitePool, kind: Kind, name: &str, password: String) -> Result<()> {
+    sqlx::query("INSERT OR REPLACE INTO remote (kind, name) VALUES (?, ?)")
         .bind(kind)
         .bind(name)
         .execute(pool)
@@ -49,13 +49,13 @@ pub async fn add_source(pool: &SqlitePool, kind: Kind, name: &str, password: Str
     Ok(())
 }
 
-pub fn get_password(source: &Source) -> Result<String> {
-    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", source.kind, source.name))?;
+pub fn get_password(remote: &Remote) -> Result<String> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", remote.kind, remote.name))?;
     Ok(entry.get_password()?)
 }
 
-pub fn delete_password(source: &Source) -> Result<()> {
-    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", source.kind, source.name))?;
+pub fn delete_password(remote: &Remote) -> Result<()> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", remote.kind, remote.name))?;
     Ok(entry.delete_credential()?)
 }
 
@@ -65,10 +65,10 @@ impl Work {
         E: Executor<'a, Database = Sqlite>,
     {
         sqlx::query(
-            "INSERT OR REPLACE INTO work (source_id, id, project, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
+            "INSERT OR REPLACE INTO work (remote_id, id, project, title, parent_id, description, work_type, version, state, created_by_id, assigned_to_id, column, created, modified, url)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(self.source_id)
+        .bind(self.remote_id)
         .bind(&self.id)
         .bind(&self.project)
         .bind(&self.title)
@@ -96,10 +96,10 @@ impl Person {
         E: Executor<'a, Database = Sqlite>,
     {
         sqlx::query(
-            "INSERT OR REPLACE INTO person (source_id, id, name)
+            "INSERT OR REPLACE INTO person (remote_id, id, name)
              VALUES (?, ?, ?)",
         )
-        .bind(self.source_id)
+        .bind(self.remote_id)
         .bind(&self.id)
         .execute(executor)
         .await?;
@@ -122,15 +122,15 @@ impl Timesheet {
     {
         sqlx::query(
             r#"
-            INSERT INTO timesheet (source_id, ticket_id, date, duration_seconds)
+            INSERT INTO timesheet (remote_id, ticket_id, date, duration_seconds)
             VALUES (?, ?, ?, ?)
-            ON CONFLICT(source_id, ticket_id, date) DO UPDATE SET
+            ON CONFLICT(remote_id, ticket_id, date) DO UPDATE SET
                 duration_seconds = excluded.duration_seconds,
                 synced = 0
             WHERE timesheet.duration_seconds != excluded.duration_seconds
             "#,
         )
-        .bind(self.source_id)
+        .bind(self.remote_id)
         .bind(&self.ticket_id)
         .bind(&self.date)
         .bind(self.duration_seconds)

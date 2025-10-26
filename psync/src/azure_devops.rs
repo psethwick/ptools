@@ -63,7 +63,7 @@ struct AzureDevOpsBatchResponse {
 }
 
 async fn process_project(
-    source_id: i64,
+    remote_id: i64,
     client: &Client,
     org: &str,
     pat: &str,
@@ -73,7 +73,7 @@ async fn process_project(
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
-    let max_modified = get_max_modified(pool, project_name, source_id).await?;
+    let max_modified = get_max_modified(pool, project_name, remote_id).await?;
 
     let project_id = project["id"]
         .as_str()
@@ -197,7 +197,7 @@ async fn process_project(
             let work: Vec<_> = batch_response
                 .iter()
                 .map(|az| Work {
-                    source_id,
+                    remote_id,
                     id: az.id.to_string(),
                     version: Some(az.rev.to_string()),
                     url: Some(az.url.clone()),
@@ -222,7 +222,7 @@ async fn process_project(
                         .into_iter()
                         .flatten()
                         .map(|p| Person {
-                            source_id,
+                            remote_id,
                             id: p.id.clone(),
                             name: p.display_name.clone(),
                         })
@@ -255,7 +255,7 @@ async fn process_project(
 
 #[async_trait]
 impl RemoteSync for AzureDevops {
-    async fn sync(&self, client: &Client, source_id: i64) -> Result<Data, Error> {
+    async fn sync(&self, client: &Client, remote_id: i64) -> Result<Data, Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -298,7 +298,7 @@ impl RemoteSync for AzureDevops {
             let project = project.clone();
 
             set.spawn(async move {
-                process_project(source_id, &client, &org, &pat, &project, &Pool::connect("").await?).await
+                process_project(remote_id, &client, &org, &pat, &project, &Pool::connect("").await?).await
             });
         }
 

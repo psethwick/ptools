@@ -1,4 +1,4 @@
-CREATE TABLE source (
+CREATE TABLE remote (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind INTEGER NOT NULL,
   name TEXT NOT NULL,
@@ -6,7 +6,7 @@ CREATE TABLE source (
 );
 
 CREATE TABLE work (
-  source_id INTEGER NOT NULL,
+  remote_id INTEGER NOT NULL,
   id TEXT NOT NULL,
   project TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -21,14 +21,14 @@ CREATE TABLE work (
   created TIMESTAMP,
   modified TIMESTAMP,
   url TEXT,
-  PRIMARY KEY (source_id, id),
-  FOREIGN KEY (source_id) REFERENCES source (id)
+  PRIMARY KEY (remote_id, id),
+  FOREIGN KEY (remote_id) REFERENCES remote (id)
 );
 
 CREATE TABLE person (
-  source_id INTEGER NOT NULL,
+  remote_id INTEGER NOT NULL,
   id TEXT NOT NULL,
   name TEXT NOT NULL,
-  PRIMARY KEY (source_id, id),
-  FOREIGN KEY (source_id) REFERENCES source (id)
+  PRIMARY KEY (remote_id, id),
+  FOREIGN KEY (remote_id) REFERENCES remote (id)
 );

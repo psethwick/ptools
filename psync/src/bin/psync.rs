@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{self, Parser, Subcommand};
 use pstore::models::Kind;
-use pstore::queries::{add_source, get_sources, remove_source, get_work};
+use pstore::queries::{add_remote, get_remotes, remove_remote, get_work};
 use tokio::task::JoinSet;
 
 #[derive(Debug, Parser)]
@@ -56,8 +56,8 @@ async fn main() -> Result<()> {
     match args.command {
         Root::Add(a) => match a {
             Add::AzureDevops { org, pat } => {
-                add_source(&pool, Kind::AzureDevops, &org, pat).await?;
-                println!("Added source: {}-{org}", Kind::AzureDevops);
+                add_remote(&pool, Kind::AzureDevops, &org, pat).await?;
+                println!("Added remote: {}-{org}", Kind::AzureDevops);
             }
             Add::Jira {
                 org,
@@ -68,28 +68,28 @@ async fn main() -> Result<()> {
                     "user": user,
                     "password": password
                 });
-                add_source(&pool, Kind::Jira, &org, credentials.to_string()).await?;
-                println!("Added source: {}-{org}", Kind::Jira);
+                add_remote(&pool, Kind::Jira, &org, credentials.to_string()).await?;
+                println!("Added remote: {}-{org}", Kind::Jira);
             }
         },
         Root::Delete(d) => match d {
             Delete::AzureDevops { org } => {
-                let sources = get_sources(&pool).await?;
-                let sc_to_remove = sources.iter().find(|s| s.kind == Kind::AzureDevops && s.name == org).unwrap();
-                remove_source(&pool, sc_to_remove).await?;
+                let remotes = get_remotes(&pool).await?;
+                let remote_to_remove = remotes.iter().find(|s| s.kind == Kind::AzureDevops && s.name == org).unwrap();
+                remove_remote(&pool, remote_to_remove).await?;
             }
             Delete::Jira { .. } => todo!(),
         },
         Root::Sync => {
             let client = reqwest::Client::new();
-            let sources = get_sources(&pool).await?;
+            let remotes = get_remotes(&pool).await?;
             let mut set = JoinSet::new();
 
-            for source in sources {
+            for remote in remotes {
                 let client = client.clone();
                 let pool = pool.clone();
                 set.spawn(async move {
-                    if let Err(e) = psync::sync_source(&source, &client, &pool).await {
+                    if let Err(e) = psync::sync_remote(&remote, &client, &pool).await {
                         eprintln!("Sync failed: {e}");
                     }
                 });

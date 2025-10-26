@@ -5,5 +5,5 @@ use reqwest::Client;
 
 #[async_trait]
 pub trait RemoteSync: Send + Sync {
-    async fn sync(&self, client: &Client, source_id: i64) -> Result<Data>;
+    async fn sync(&self, client: &Client, remote_id: i64) -> Result<Data>;
 }

@@ -70,7 +70,7 @@ where
 }
 
 #[derive(PartialEq, Eq, Clone, FromRow, Debug, Serialize, Deserialize)]
-pub struct Source {
+pub struct Remote {
     pub id: i64,
     #[sqlx(try_from = "i32")]
     pub kind: Kind,
@@ -79,7 +79,7 @@ pub struct Source {
 
 #[derive(FromRow, Debug, Serialize, Deserialize)]
 pub struct Work {
-    pub source_id: i64,
+    pub remote_id: i64,
     pub project: String,
     pub id: String,
     pub title: String,
@@ -98,7 +98,7 @@ pub struct Work {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Person {
-    pub source_id: i64,
+    pub remote_id: i64,
     pub id: String,
     pub name: String,
 }
@@ -111,7 +111,7 @@ pub struct Data {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Timesheet {
-    pub source_id: i64,
+    pub remote_id: i64,
     pub ticket_id: String,
     pub date: String,
     pub duration_seconds: i64,

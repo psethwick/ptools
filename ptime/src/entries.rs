@@ -1,8 +1,8 @@
 use anyhow::Result;
-use chrono::{Datelike, NaiveDate};
+use chrono::NaiveDate;
 use itertools::Itertools;
 use pstore::models::Timesheet;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 // TODO: client and task should maybe also be Option?
 // or maybe I need a third variant?
@@ -71,7 +71,7 @@ impl Day {
 
     pub async fn save_to_pstore(&self) -> Result<()> {
         let pool = pstore::db::init().await?;
-        let sources = pstore::queries::get_sources(&pool).await?;
+        let remotes = pstore::queries::get_remotes(&pool).await?;
 
         let mut tx = pool.begin().await?;
 
@@ -88,15 +88,12 @@ impl Day {
             .into_group_map()
         {
             let prefix = ticket_id.split('-').next().unwrap_or("");
-            if let Some(source) = sources
-                .iter()
-                .find(|s| s.name.eq_ignore_ascii_case(prefix))
-            {
+            if let Some(remote) = remotes.iter().find(|s| s.name.eq_ignore_ascii_case(prefix)) {
                 let total_seconds = (duration.iter().sum::<f64>() * 3600.0) as i64;
                 let date_str = self.date.format("%Y-%m-%d").to_string();
 
                 let ts = Timesheet {
-                    source_id: source.id,
+                    remote_id: remote.id,
                     ticket_id: ticket_id.clone(),
                     date: date_str,
                     duration_seconds: total_seconds,
@@ -104,7 +101,7 @@ impl Day {
                 ts.save(&mut *tx).await?;
                 println!("Stored {total_seconds}s for {ticket_id}");
             } else {
-                eprintln!("Warning: Could not find source for ticket {}", ticket_id);
+                eprintln!("Warning: Could not find remote for ticket {ticket_id}");
             }
         }
 

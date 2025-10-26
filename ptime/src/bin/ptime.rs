@@ -2,7 +2,6 @@ use chrono::{Datelike, Duration, Local, Months, NaiveDate, Weekday};
 use clap::{self, Parser, Subcommand};
 use ptime::entries::Day;
 use ptime::files::{add_today_entry, get_today_path};
-use std::env;
 
 #[derive(Debug, Parser)]
 #[command(name = "ptime")]
