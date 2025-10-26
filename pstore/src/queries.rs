@@ -1,4 +1,4 @@
-use crate::models::{Source, Work, Person, Kind};
+use crate::models::{Source, Work, Person, Kind, Timesheet};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::{Executor, Sqlite, SqlitePool};
@@ -113,5 +113,31 @@ pub async fn get_work(pool: &SqlitePool) -> Result<Vec<Work>> {
         .fetch_all(pool)
         .await?;
     Ok(work_items)
+}
+
+impl Timesheet {
+    pub async fn save<'a, E>(&self, executor: E) -> Result<()>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query(
+            r#"
+            INSERT INTO timesheet (source_id, ticket_id, date, duration_seconds)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(source_id, ticket_id, date) DO UPDATE SET
+                duration_seconds = excluded.duration_seconds,
+                synced = 0
+            WHERE timesheet.duration_seconds != excluded.duration_seconds
+            "#,
+        )
+        .bind(self.source_id)
+        .bind(&self.ticket_id)
+        .bind(&self.date)
+        .bind(self.duration_seconds)
+        .execute(executor)
+        .await?;
+
+        Ok(())
+    }
 }
 

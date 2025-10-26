@@ -20,3 +20,5 @@ egui = "0.32.0"
 eframe = "0.32.0"
 egui_extras = "0.32.0"
 env_logger = { version = "0.10", default-features = false, features = [ "auto-color", "humantime", ] }
+keyring = "2.0.0"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "migrate", "chrono", "json"] }

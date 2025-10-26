@@ -1,5 +1,7 @@
+use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
 use itertools::Itertools;
+use pstore::models::Timesheet;
 use serde::{Deserialize, Serialize};
 
 // TODO: client and task should maybe also be Option?
@@ -54,39 +56,6 @@ pub struct Report {
     total: f64,
 }
 
-#[derive(Deserialize, Debug)]
-struct Author {
-    #[serde(rename = "displayName")]
-    name: String,
-    #[serde(rename = "accountId")]
-    account_id: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct Worklog {
-    author: Author,
-    id: String,
-    started: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct Worklogs {
-    worklogs: Vec<Worklog>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct NewWorklog {
-    time_spent_seconds: u64,
-}
-
-pub struct JiraDetails {
-    pub username: String,
-    pub url: String,
-    pub password: String,
-}
-
 impl Day {
     pub fn total_work(&self, client_filter: Option<&str>) -> f64 {
         self.entries
@@ -100,19 +69,11 @@ impl Day {
             .sum()
     }
 
-    pub async fn sync(&self, jira_details: &JiraDetails) -> Result<(), reqwest::Error> {
-        let client = reqwest::Client::new();
+    pub async fn save_to_pstore(&self) -> Result<()> {
+        let pool = pstore::db::init().await?;
+        let sources = pstore::queries::get_sources(&pool).await?;
 
-        let myself_url = format!("{}/rest/api/2/myself", &jira_details.url);
-        let myself_response = client
-            .get(&myself_url)
-            .basic_auth(&jira_details.username, Some(&jira_details.password))
-            .send()
-            .await?
-            .json::<serde_json::Value>()
-            .await?;
-
-        let current_user_account_id = myself_response["accountId"].as_str().map(|s| s.to_string());
+        let mut tx = pool.begin().await?;
 
         for (ticket_id, duration) in self
             .entries
@@ -126,56 +87,28 @@ impl Day {
             })
             .into_group_map()
         {
-            let total_seconds = (duration.iter().sum::<f64>() * 3600.0) as u64;
+            let prefix = ticket_id.split('-').next().unwrap_or("");
+            if let Some(source) = sources
+                .iter()
+                .find(|s| s.name.eq_ignore_ascii_case(prefix))
+            {
+                let total_seconds = (duration.iter().sum::<f64>() * 3600.0) as i64;
+                let date_str = self.date.format("%Y-%m-%d").to_string();
 
-            let worklogs_url =
-                format!("{}/rest/api/2/issue/{ticket_id}/worklog", &jira_details.url);
-
-            let worklogs = client
-                .get(&worklogs_url)
-                .basic_auth(&jira_details.username, Some(&jira_details.password))
-                .send()
-                .await?
-                .json::<Worklogs>()
-                .await?;
-            dbg!(&worklogs);
-
-            let existing_worklog = worklogs.worklogs.iter().find(|w| {
-                // Compare account_id to accurately identify worklogs by the current user
-                if w.author.account_id.as_ref() != current_user_account_id.as_ref() {
-                    return false;
-                }
-                if let Ok(started_date) = NaiveDate::parse_from_str(&w.started[0..10], "%Y-%m-%d") {
-                    return started_date.year() == self.date.year()
-                        && started_date.month() == self.date.month()
-                        && started_date.day() == self.date.day();
-                }
-                false
-            });
-
-            let worklog_body = NewWorklog {
-                time_spent_seconds: total_seconds,
-            };
-
-            if let Some(existing) = existing_worklog {
-                let update_url = format!("{worklogs_url}/{}", existing.id);
-                println!("Updating worklog for {ticket_id}: {total_seconds}s");
-                // client
-                //     .put(update_url)
-                //     .basic_auth(username, Some(password))
-                //     .json(&worklog_body)
-                //     .send()
-                //     .await?;
+                let ts = Timesheet {
+                    source_id: source.id,
+                    ticket_id: ticket_id.clone(),
+                    date: date_str,
+                    duration_seconds: total_seconds,
+                };
+                ts.save(&mut *tx).await?;
+                println!("Stored {total_seconds}s for {ticket_id}");
             } else {
-                println!("Creating new worklog for {ticket_id}: {total_seconds}s");
-                // client
-                //     .post(worklogs_url)
-                //     .basic_auth(username, Some(password))
-                //     .json(&worklog_body)
-                //     .send()
-                //     .await?;
+                eprintln!("Warning: Could not find source for ticket {}", ticket_id);
             }
         }
+
+        tx.commit().await?;
         Ok(())
     }
 

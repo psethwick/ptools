@@ -1,6 +1,6 @@
 use chrono::{Datelike, Duration, Local, Months, NaiveDate, Weekday};
 use clap::{self, Parser, Subcommand};
-use ptime::entries::{Day, JiraDetails};
+use ptime::entries::Day;
 use ptime::files::{add_today_entry, get_today_path};
 use std::env;
 
@@ -48,7 +48,6 @@ async fn report_range(
     end: NaiveDate,
     client_filter: Option<&str>,
     sync: bool,
-    jira_details: &JiraDetails,
 ) {
     assert!(start < end, "start date must be before end date");
     let mut total_work: f64 = 0.0;
@@ -59,8 +58,8 @@ async fn report_range(
         if let Some(d) = day {
             print!("{}", d.report_str(client_filter));
             if sync {
-                if let Err(e) = d.sync(jira_details).await {
-                    eprintln!("Sync failed for date {s}: {e}\n");
+                if let Err(e) = d.save_to_pstore().await {
+                    eprintln!("Save to pstore failed for date {s}: {e}\n");
                 }
             }
             total_work += d.total_work(client_filter);
@@ -74,17 +73,11 @@ async fn report_range(
 async fn main() {
     let args = Cli::parse();
 
-    let jira_details = JiraDetails {
-        url: env::var("JIRA_URL").unwrap(),
-        username: env::var("JIRA_USER").unwrap(),
-        password: env::var("JIRA_PASSWORD").unwrap(),
-    };
-
     match args.command {
         Commands::Range { start, end } => {
             let s = parse_date(&start);
             let e = parse_date(&end);
-            report_range(s, e, args.client.as_deref(), args.sync, &jira_details).await
+            report_range(s, e, args.client.as_deref(), args.sync).await
         }
         Commands::Week => {
             let today = Local::now().date_naive();
@@ -94,7 +87,7 @@ async fn main() {
             }
             let end = start + Duration::days(4);
             // start = Monday, end = Friday
-            report_range(start, end, args.client.as_deref(), args.sync, &jira_details).await
+            report_range(start, end, args.client.as_deref(), args.sync).await
         }
         Commands::Month => {
             let today = Local::now().date_naive();
@@ -106,7 +99,7 @@ async fn main() {
             end = end.checked_add_months(Months::new(1)).unwrap();
             end -= Duration::days(1);
 
-            report_range(start, end, args.client.as_deref(), args.sync, &jira_details).await;
+            report_range(start, end, args.client.as_deref(), args.sync).await;
         }
         Commands::Day { date } => {
             let day = Day::new(match date {
@@ -117,8 +110,8 @@ async fn main() {
             if let Some(d) = day {
                 println!("{}", d.report_str(args.client.as_deref()));
                 if args.sync {
-                    if let Err(e) = d.sync(&jira_details).await {
-                        eprintln!("Sync failed: {e}");
+                    if let Err(e) = d.save_to_pstore().await {
+                        eprintln!("Save to pstore failed: {e}");
                     }
                 }
             } else {

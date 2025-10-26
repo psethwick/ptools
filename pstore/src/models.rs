@@ -108,3 +108,11 @@ pub struct Data {
     pub work: Vec<Work>,
     pub people: Vec<Person>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Timesheet {
+    pub source_id: i64,
+    pub ticket_id: String,
+    pub date: String,
+    pub duration_seconds: i64,
+}
