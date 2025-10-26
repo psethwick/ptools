@@ -58,7 +58,9 @@ struct JiraRenderedFields {
 
 #[derive(Deserialize, Debug)]
 struct JiraSearchResponse {
-    pub issues: Vec<JiraWorkItem>,
+    pub issues: Option<Vec<JiraWorkItem>>,
+    #[serde(rename = "errorMessages")]
+    pub error_messages: Option<Vec<String>>,
 }
 
 async fn process_project(
@@ -125,11 +127,16 @@ async fn process_project(
                 .send()
                 .await?;
             let response_text = search_response.text().await?;
-            let search_response = serde_json::from_str::<JiraSearchResponse>(&response_text)
+            let decoded_response = serde_json::from_str::<JiraSearchResponse>(&response_text)
                 .map_err(|e| anyhow!("Failed to decode JiraSearchResponse: {e}. Response body: {response_text}"))?;
 
-            let work: Vec<_> = search_response
-                .issues
+            if let Some(errors) = decoded_response.error_messages {
+                return Err(anyhow!("Jira API returned errors: {}", errors.join(", ")));
+            }
+
+            let issues = decoded_response.issues.ok_or_else(|| anyhow!("JiraSearchResponse is missing 'issues' field and did not provide error messages."))?;
+
+            let work: Vec<_> = issues
                 .iter()
                 .map(|issue| Work {
                     remote_id,
@@ -164,8 +171,7 @@ async fn process_project(
                 })
                 .collect();
 
-            let people: Vec<Person> = search_response
-                .issues
+            let people: Vec<Person> = issues
                 .iter()
                 .flat_map(|issue| {
                     [

@@ -1,9 +1,9 @@
-use crate::models::{Remote, Work, Person, Kind, Timesheet};
+use crate::SERVICE_NAME;
+use crate::models::{Kind, Person, Remote, Timesheet, Work};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use sqlx::{Executor, Sqlite, SqlitePool};
 use keyring::Entry;
-use crate::SERVICE_NAME;
+use sqlx::{Executor, Sqlite, SqlitePool};
 
 pub async fn get_remotes(pool: &SqlitePool) -> Result<Vec<Remote>> {
     let s = sqlx::query_as::<_, Remote>("SELECT id, kind, name FROM remote")
@@ -140,4 +140,3 @@ impl Timesheet {
         Ok(())
     }
 }
-
