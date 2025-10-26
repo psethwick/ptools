@@ -117,15 +117,16 @@ async fn process_project(
         let domain_clone = domain.to_string();
 
         set.spawn(async move {
-            let search_url = format!("https://{domain_clone}.atlassian.net/rest/api/3/search");
+            let search_url = format!("https://{domain_clone}.atlassian.net/rest/api/3/search/jql");
             let search_response = client
                 .post(&search_url)
                 .basic_auth(user, Some(pat))
                 .json(&search_body)
                 .send()
-                .await?
-                .json::<JiraSearchResponse>()
                 .await?;
+            let response_text = search_response.text().await?;
+            let search_response = serde_json::from_str::<JiraSearchResponse>(&response_text)
+                .map_err(|e| anyhow!("Failed to decode JiraSearchResponse: {e}. Response body: {response_text}"))?;
 
             let work: Vec<_> = search_response
                 .issues
