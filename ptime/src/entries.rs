@@ -103,7 +103,6 @@ impl Day {
     pub async fn sync(&self, jira_details: &JiraDetails) -> Result<(), reqwest::Error> {
         let client = reqwest::Client::new();
 
-        // Fetch current user's accountId for accurate worklog filtering
         let myself_url = format!("{}/rest/api/2/myself", &jira_details.url);
         let myself_response = client
             .get(&myself_url)
@@ -112,15 +111,8 @@ impl Day {
             .await?
             .json::<serde_json::Value>()
             .await?;
-        let current_user_account_id = myself_response["accountId"]
-            .as_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| {
-                reqwest::Error::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Failed to get accountId from /myself endpoint",
-                ))
-            })?;
+
+        let current_user_account_id = myself_response["accountId"].as_str().map(|s| s.to_string());
 
         for (ticket_id, duration) in self
             .entries
@@ -150,7 +142,7 @@ impl Day {
 
             let existing_worklog = worklogs.worklogs.iter().find(|w| {
                 // Compare account_id to accurately identify worklogs by the current user
-                if w.author.account_id.as_ref() != Some(&current_user_account_id) {
+                if w.author.account_id.as_ref() != current_user_account_id.as_ref() {
                     return false;
                 }
                 if let Ok(started_date) = NaiveDate::parse_from_str(&w.started[0..10], "%Y-%m-%d") {
