@@ -20,11 +20,11 @@ impl Picker for Calculator {
                 let mut copy = String::new();
                 for s in stms {
                     let markup = s.pretty_print();
-                    display += &format!("{}", markup).to_owned();
+                    display += &format!("{markup}").to_owned();
                 }
                 if let Value(v) = calc_res {
-                    copy += &format!("{}", v);
-                    display += &format!(" = {}", copy);
+                    copy += &format!("{v}");
+                    display += &format!(" = {copy}");
                 }
                 vec![ListItem {
                     display,

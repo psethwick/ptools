@@ -1,7 +1,7 @@
 /** A tiny tagged language for defining what should be done with the text
 * >sink stick the text somewhere (e.g. a note somewhere or a todo item)
-* @agent send to an external agent (e.g. ai, teammate)
-* $cmd send it to a command line tool
+* > @agent send to an external agent (e.g. ai, teammate)
+* > $cmd send it to a command line tool
 */
 use nom::{
     branch::alt, bytes::complete::tag, character::complete::alpha1, sequence::preceded, IResult,
@@ -54,7 +54,7 @@ pub fn parse(input: &str) -> Parsed {
             }
             Some(word.to_owned())
         })
-        .reduce(|acc, w| format!("{} {}", w, acc)) // sneaky re rev
+        .reduce(|acc, w| format!("{w} {acc}")) // sneaky re rev
         .to_owned();
 
     match text {

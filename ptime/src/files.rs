@@ -53,7 +53,7 @@ mod tests {
     fn with_ts_base(closure: fn(p: PathBuf) -> ()) -> Result<(), Error> {
         let temp_dir = tempdir()?;
         let path = temp_dir.keep();
-        let path_str = format!("{}", path.to_str().unwrap());
+        let path_str = path.to_str().unwrap().to_string();
         with_var("TIMESHEET_BASE_FOLDER", Some(path_str), || {
             closure(path.clone())
         });
@@ -103,7 +103,7 @@ mod tests {
             add_today_entry("2345 testing testing").unwrap();
             let result = add_today_entry("1234 yes no");
             println!("{result:?}");
-            assert!(matches!(result, Err(_)));
+            assert!(result.is_err());
         })
         .unwrap();
     }

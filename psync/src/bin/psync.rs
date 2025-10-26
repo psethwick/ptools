@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{self, Parser, Subcommand};
-use pstore::models::{Kind, Source, Work};
+use pstore::models::Kind;
 use pstore::queries::{add_source, get_sources, remove_source, get_work};
 use tokio::task::JoinSet;
 

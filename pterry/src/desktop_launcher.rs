@@ -48,7 +48,7 @@ impl Default for DesktopLauncher {
         let applications_folders = match env::var("XDG_DATA_DIRS") {
             Ok(dd) => dd
                 .split(':')
-                .map(|p| PathBuf::from(format!("{}/applications", p)))
+                .map(|p| PathBuf::from(format!("{p}/applications")))
                 .collect(),
             Err(_) => vec![
                 // let's just try our best

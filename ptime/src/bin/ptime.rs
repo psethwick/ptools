@@ -59,8 +59,8 @@ async fn report_range(
         if let Some(d) = day {
             print!("{}", d.report_str(client_filter));
             if sync {
-                if let Err(e) = d.sync(&jira_details).await {
-                    eprintln!("Sync failed for date {}: {}\n", s, e);
+                if let Err(e) = d.sync(jira_details).await {
+                    eprintln!("Sync failed for date {s}: {e}\n");
                 }
             }
             total_work += d.total_work(client_filter);
@@ -118,7 +118,7 @@ async fn main() {
                 println!("{}", d.report_str(args.client.as_deref()));
                 if args.sync {
                     if let Err(e) = d.sync(&jira_details).await {
-                        eprintln!("Sync failed: {}", e);
+                        eprintln!("Sync failed: {e}");
                     }
                 }
             } else {

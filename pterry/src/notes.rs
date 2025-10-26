@@ -59,7 +59,7 @@ fn append_to_daily_note(input: &str) -> Result<Option<ToMeatspace>> {
         .open(get_day_path(Local::now().date_naive())?)?;
 
     file.sync_all()?;
-    writeln!(file, "{}", input)?;
+    writeln!(file, "{input}")?;
     Ok(ToMeatspace::Close.into())
 }
 
