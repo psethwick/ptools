@@ -19,7 +19,7 @@ pub async fn sync_remote(remote: &Remote, client: &Client, pool: &Pool) -> Resul
                     org: remote.name.to_owned(),
                     pat: pat.to_owned(),
                 })?
-                .sync(client, remote.id)
+                .sync(client, remote.id, pool)
                 .await?
         }
         Kind::Jira => {
@@ -38,7 +38,7 @@ pub async fn sync_remote(remote: &Remote, client: &Client, pool: &Pool) -> Resul
                 user,
                 password: pat,
             }
-            .sync(client, remote.id)
+            .sync(client, remote.id, pool)
             .await?
         }
     };

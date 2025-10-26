@@ -212,7 +212,7 @@ async fn process_project(
 
 #[async_trait]
 impl RemoteSync for Jira {
-    async fn sync(&self, client: &Client, remote_id: i64) -> Result<Data, Error> {
+    async fn sync(&self, client: &Client, remote_id: i64, pool: &Pool) -> Result<Data, Error> {
         let projects_url = format!("https://{}.atlassian.net/rest/api/3/project", self.domain);
         let projects_response: Vec<Value> = client
             .get(&projects_url)
@@ -230,17 +230,9 @@ impl RemoteSync for Jira {
             let user = self.user.clone();
             let pat = self.password.clone();
 
+            let pool = pool.clone();
             set.spawn(async move {
-                process_project(
-                    remote_id,
-                    &client,
-                    &domain,
-                    &user,
-                    &pat,
-                    &project,
-                    &Pool::connect("").await?,
-                )
-                .await
+                process_project(remote_id, &client, &domain, &user, &pat, &project, &pool).await
             });
         }
 
