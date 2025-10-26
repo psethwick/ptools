@@ -69,7 +69,7 @@ impl Day {
             .sum()
     }
 
-    pub async fn save_to_pstore(&self) -> Result<()> {
+    pub async fn save_to_pstore(&self, remote_name: &str) -> Result<()> {
         let pool = pstore::db::init().await?;
         let remotes = pstore::queries::get_remotes(&pool).await?;
 
@@ -87,8 +87,7 @@ impl Day {
             })
             .into_group_map()
         {
-            let prefix = ticket_id.split('-').next().unwrap_or("");
-            if let Some(remote) = remotes.iter().find(|s| s.name.eq_ignore_ascii_case(prefix)) {
+            if let Some(remote) = remotes.iter().find(|s| s.name.eq_ignore_ascii_case(remote_name)) {
                 let total_seconds = (duration.iter().sum::<f64>() * 3600.0) as i64;
                 let date_str = self.date.format("%Y-%m-%d").to_string();
 

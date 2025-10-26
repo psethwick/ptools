@@ -9,8 +9,8 @@ use ptime::files::{add_today_entry, get_today_path};
 struct Cli {
     #[arg(short = 'c', long)]
     client: Option<String>,
-    #[arg(short = 's', long)]
-    sync: bool,
+    #[arg(long = "save-to")]
+    save_to: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -46,7 +46,7 @@ async fn report_range(
     start: NaiveDate,
     end: NaiveDate,
     client_filter: Option<&str>,
-    sync: bool,
+    sync_to: Option<&str>,
 ) {
     assert!(start < end, "start date must be before end date");
     let mut total_work: f64 = 0.0;
@@ -56,8 +56,8 @@ async fn report_range(
         let day = Day::new(s);
         if let Some(d) = day {
             print!("{}", d.report_str(client_filter));
-            if sync {
-                if let Err(e) = d.save_to_pstore().await {
+            if let Some(remote_name) = sync_to {
+                if let Err(e) = d.save_to_pstore(remote_name).await {
                     eprintln!("Save to pstore failed for date {s}: {e}\n");
                 }
             }
@@ -76,7 +76,7 @@ async fn main() {
         Commands::Range { start, end } => {
             let s = parse_date(&start);
             let e = parse_date(&end);
-            report_range(s, e, args.client.as_deref(), args.sync).await
+            report_range(s, e, args.client.as_deref(), args.save_to.as_deref()).await
         }
         Commands::Week => {
             let today = Local::now().date_naive();
@@ -86,7 +86,7 @@ async fn main() {
             }
             let end = start + Duration::days(4);
             // start = Monday, end = Friday
-            report_range(start, end, args.client.as_deref(), args.sync).await
+            report_range(start, end, args.client.as_deref(), args.save_to.as_deref()).await
         }
         Commands::Month => {
             let today = Local::now().date_naive();
@@ -98,7 +98,7 @@ async fn main() {
             end = end.checked_add_months(Months::new(1)).unwrap();
             end -= Duration::days(1);
 
-            report_range(start, end, args.client.as_deref(), args.sync).await;
+            report_range(start, end, args.client.as_deref(), args.save_to.as_deref()).await;
         }
         Commands::Day { date } => {
             let day = Day::new(match date {
@@ -108,8 +108,8 @@ async fn main() {
 
             if let Some(d) = day {
                 println!("{}", d.report_str(args.client.as_deref()));
-                if args.sync {
-                    if let Err(e) = d.save_to_pstore().await {
+                if let Some(remote_name) = args.save_to.as_deref() {
+                    if let Err(e) = d.save_to_pstore(remote_name).await {
                         eprintln!("Save to pstore failed: {e}");
                     }
                 }
