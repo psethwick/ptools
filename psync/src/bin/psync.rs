@@ -1,9 +1,7 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clap::{self, Parser, Subcommand};
-use psync::SERVICE_NAME;
-use psync::remote::{Kind, Source, Work, get_sources, remove_source};
-use sqlx::{SqlitePool, migrate};
-use std::path::PathBuf;
+use pstore::models::{Kind, Source, Work};
+use pstore::queries::{add_source, get_sources, remove_source, get_work};
 use tokio::task::JoinSet;
 
 #[derive(Debug, Parser)]
@@ -48,33 +46,17 @@ enum Delete {
     Jira { org: String },
 }
 
-fn get_data_dir() -> Result<PathBuf> {
-    dirs::data_dir()
-        .map(|mut path| {
-            path.push(SERVICE_NAME);
-            path
-        })
-        .ok_or(anyhow!("Couldn't determine data directory"))
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
 
-    let data_dir = get_data_dir()?;
-    std::fs::create_dir_all(&data_dir)?;
-    let db_path = data_dir.join("psync.db");
-    let pool =
-        SqlitePool::connect(&format!("sqlite:{}?mode=rwc", db_path.to_str().unwrap())).await?;
-    sqlx::query("PRAGMA journal_mode=WAL;")
-        .execute(&pool)
-        .await?;
-    migrate!("./migrations").run(&pool).await?;
+    let pool = pstore::db::init().await?;
 
     match args.command {
         Root::Add(a) => match a {
             Add::AzureDevops { org, pat } => {
-                Source::add(&pool, Kind::AzureDevops, &org, pat).await?;
+                add_source(&pool, Kind::AzureDevops, &org, pat).await?;
                 println!("Added source: {}-{org}", Kind::AzureDevops);
             }
             Add::Jira {
@@ -86,20 +68,15 @@ async fn main() -> Result<()> {
                     "user": user,
                     "password": password
                 });
-                Source::add(&pool, Kind::Jira, &org, credentials.to_string()).await?;
+                add_source(&pool, Kind::Jira, &org, credentials.to_string()).await?;
                 println!("Added source: {}-{org}", Kind::Jira);
             }
         },
         Root::Delete(d) => match d {
             Delete::AzureDevops { org } => {
-                let sc_to_remove = sqlx::query_as::<_, Source>(
-                    "SELECT id, kind, name FROM source WHERE kind = ? AND name = ?",
-                )
-                .bind("azure_devops")
-                .bind(org)
-                .fetch_one(&pool)
-                .await?;
-                remove_source(&pool, &sc_to_remove).await?;
+                let sources = get_sources(&pool).await?;
+                let sc_to_remove = sources.iter().find(|s| s.kind == Kind::AzureDevops && s.name == org).unwrap();
+                remove_source(&pool, sc_to_remove).await?;
             }
             Delete::Jira { .. } => todo!(),
         },
@@ -112,7 +89,7 @@ async fn main() -> Result<()> {
                 let client = client.clone();
                 let pool = pool.clone();
                 set.spawn(async move {
-                    if let Err(e) = source.sync(&client, &pool).await {
+                    if let Err(e) = psync::sync_source(&source, &client, &pool).await {
                         eprintln!("Sync failed: {e}");
                     }
                 });
@@ -126,9 +103,7 @@ async fn main() -> Result<()> {
         }
         Root::List(l) => match l {
             List::Work => {
-                let work_items: Vec<Work> = sqlx::query_as("SELECT * FROM work")
-                    .fetch_all(&pool)
-                    .await?;
+                let work_items = get_work(&pool).await?;
                 for item in work_items {
                     println!("{item:#?}");
                 }

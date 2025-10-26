@@ -1,13 +1,14 @@
-use crate::remote::{Data, Person, Work};
-use crate::remote::{RemoteSync, get_max_modified};
-use anyhow::{Error, Result, anyhow};
+use crate::remote::RemoteSync;
+use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use pstore::db::Pool;
+use pstore::models::{Data, Person, Work};
+use pstore::queries::get_max_modified;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::SqlitePool;
 use tokio::task::JoinSet;
 
 pub struct Jira {
@@ -67,8 +68,8 @@ async fn process_project(
     user: &str,
     pat: &str,
     project: &Value,
-    pool: &SqlitePool,
-) -> Result<()> {
+    pool: &Pool,
+) -> Result<Data> {
     let project_key = project["key"]
         .as_str()
         .ok_or_else(|| anyhow!("Project key not found"))?;
@@ -190,16 +191,12 @@ async fn process_project(
         start_at += max_results;
     }
 
-    let mut tx = pool.begin().await?;
+    let mut data = Data::default();
     while let Some(res) = set.join_next().await {
         match res {
-            Ok(Ok(data)) => {
-                for work_item in data.work {
-                    work_item.save(&mut *tx).await?;
-                }
-                for person in data.people {
-                    person.save(&mut *tx).await?;
-                }
+            Ok(Ok(d)) => {
+                data.work.extend(d.work);
+                data.people.extend(d.people);
             }
             Ok(Err(e)) => {
                 eprintln!(
@@ -209,14 +206,13 @@ async fn process_project(
             Err(e) => eprintln!("Warning: Batch task failed for project {project_key}: {e}"),
         }
     }
-    tx.commit().await?;
 
-    Ok(())
+    Ok(data)
 }
 
 #[async_trait]
 impl RemoteSync for Jira {
-    async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<(), Error> {
+    async fn sync(&self, client: &Client, source_id: i64) -> Result<Data, Error> {
         let projects_url = format!("https://{}.atlassian.net/rest/api/3/project", self.domain);
         let projects_response: Vec<Value> = client
             .get(&projects_url)
@@ -233,21 +229,33 @@ impl RemoteSync for Jira {
             let domain = self.domain.clone();
             let user = self.user.clone();
             let pat = self.password.clone();
-            let pool = pool.clone();
 
             set.spawn(async move {
-                process_project(source_id, &client, &domain, &user, &pat, &project, &pool).await
+                process_project(
+                    source_id,
+                    &client,
+                    &domain,
+                    &user,
+                    &pat,
+                    &project,
+                    &Pool::connect("").await?,
+                )
+                .await
             });
         }
 
+        let mut data = Data::default();
         while let Some(res) = set.join_next().await {
             match res {
-                Ok(Ok(())) => (),
+                Ok(Ok(d)) => {
+                    data.work.extend(d.work);
+                    data.people.extend(d.people);
+                }
                 Ok(Err(e)) => eprintln!("Project processing error: {e}"),
                 Err(e) => eprintln!("Task join error: {e}"),
             }
         }
 
-        Ok(())
+        Ok(data)
     }
 }

@@ -3714,6 +3714,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eb8486b569e12e2c32ad3e204dbaba5e4b5b216e9367044f25f1dba42341773"
 
 [[package]]
+name = "pstore"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs",
+ "keyring",
+ "serde",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "psync"
 version = "0.1.0"
 dependencies = [
@@ -3727,11 +3740,10 @@ dependencies = [
  "env_logger",
  "futures",
  "itertools 0.14.0",
- "keyring",
+ "pstore",
  "reqwest 0.12.22",
  "serde",
  "serde_json",
- "sqlx",
  "tokio",
 ]
 

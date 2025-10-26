@@ -1,14 +1,15 @@
-use crate::remote::{Data, Person, Work};
-use crate::remote::{RemoteSync, get_max_modified};
+use pstore::models::{Data, Person, Work};
+use crate::remote::RemoteSync;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use pstore::queries::get_max_modified;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sqlx::SqlitePool;
 use tokio::task::JoinSet;
+use pstore::db::Pool;
 
 pub struct AzureDevops {
     pub org: String,
@@ -67,8 +68,8 @@ async fn process_project(
     org: &str,
     pat: &str,
     project: &Value,
-    pool: &SqlitePool,
-) -> Result<()> {
+    pool: &Pool,
+) -> Result<Data> {
     let project_name = project["name"]
         .as_str()
         .ok_or_else(|| anyhow!("Project name not found"))?;
@@ -138,7 +139,7 @@ async fn process_project(
         .unwrap_or_default();
 
     if work_item_ids.is_empty() {
-        return Ok(());
+        return Ok(Data::default());
     }
 
     let field_names = [
@@ -233,16 +234,12 @@ async fn process_project(
         });
     }
 
-    let mut tx = pool.begin().await?;
+    let mut data = Data::default();
     while let Some(res) = set.join_next().await {
         match res {
-            Ok(Ok(data)) => {
-                for work_item in data.work {
-                    work_item.save(&mut *tx).await?;
-                }
-                for person in data.people {
-                    person.save(&mut *tx).await?;
-                }
+            Ok(Ok(d)) => {
+                data.work.extend(d.work);
+                data.people.extend(d.people);
             }
             Ok(Err(e)) => {
                 eprintln!(
@@ -252,14 +249,13 @@ async fn process_project(
             Err(e) => eprintln!("Warning: Batch task failed for project {project_name}: {e}"),
         }
     }
-    tx.commit().await?;
 
-    Ok(())
+    Ok(data)
 }
 
 #[async_trait]
 impl RemoteSync for AzureDevops {
-    async fn sync(&self, client: &Client, pool: &SqlitePool, source_id: i64) -> Result<(), Error> {
+    async fn sync(&self, client: &Client, source_id: i64) -> Result<Data, Error> {
         let projects_url = format!(
             "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
             self.org
@@ -300,21 +296,24 @@ impl RemoteSync for AzureDevops {
             let org = self.org.clone();
             let pat = self.pat.clone();
             let project = project.clone();
-            let pool = pool.clone();
 
             set.spawn(async move {
-                process_project(source_id, &client, &org, &pat, &project, &pool).await
+                process_project(source_id, &client, &org, &pat, &project, &Pool::connect("").await?).await
             });
         }
 
+        let mut data = Data::default();
         while let Some(res) = set.join_next().await {
             match res {
-                Ok(Ok(())) => (),
+                Ok(Ok(d)) => {
+                    data.work.extend(d.work);
+                    data.people.extend(d.people);
+                }
                 Ok(Err(e)) => eprintln!("Project processing error: {e}"),
                 Err(e) => eprintln!("Task join error: {e}"),
             }
         }
 
-        Ok(())
+        Ok(data)
     }
 }
