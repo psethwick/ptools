@@ -1,5 +1,5 @@
 use crate::remote::RemoteSync;
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
@@ -58,6 +58,8 @@ struct JiraRenderedFields {
 
 #[derive(Deserialize, Debug)]
 struct JiraSearchResponse {
+    #[serde(rename = "nextPageToken")]
+    pub next_page_token: Option<String>,
     pub issues: Option<Vec<JiraWorkItem>>,
     #[serde(rename = "errorMessages")]
     pub error_messages: Option<Vec<String>>,
@@ -88,16 +90,13 @@ async fn process_project(
 
     let jql = format!("project = \"{project_key}\"{date_filter} ORDER BY updated DESC");
 
-    let mut start_at = 0;
-    let max_results = 100;
-
-    let mut set = JoinSet::new();
+    let mut next_page_token: Option<String> = None;
+    let mut data = Data::default();
 
     loop {
         let search_body = serde_json::json!({
-            "jql": jql,
-            "startAt": start_at,
-            "maxResults": max_results,
+            "jql": &jql,
+            "nextPageToken": next_page_token,
             "fields": [
                 "summary",
                 "description",
@@ -110,32 +109,25 @@ async fn process_project(
                 "creator",
                 "assignee"
             ],
-            "expand": ["renderedFields"]
+            "expand": "renderedFields"
         });
 
-        let client = client.clone();
-        let user = user.to_string();
-        let pat = pat.to_string();
-        let domain_clone = domain.to_string();
+        let search_url = format!("https://{domain}.atlassian.net/rest/api/3/search/jql");
+        let search_response = client
+            .post(&search_url)
+            .basic_auth(user, Some(pat))
+            .json(&search_body)
+            .send()
+            .await?;
+        let response_text = search_response.text().await?;
+        let decoded_response = serde_json::from_str::<JiraSearchResponse>(&response_text)
+            .map_err(|e| anyhow!("Failed to decode JiraSearchResponse: {e}. Response body: {response_text}"))?;
 
-        set.spawn(async move {
-            let search_url = format!("https://{domain_clone}.atlassian.net/rest/api/3/search/jql");
-            let search_response = client
-                .post(&search_url)
-                .basic_auth(user, Some(pat))
-                .json(&search_body)
-                .send()
-                .await?;
-            let response_text = search_response.text().await?;
-            let decoded_response = serde_json::from_str::<JiraSearchResponse>(&response_text)
-                .map_err(|e| anyhow!("Failed to decode JiraSearchResponse: {e}. Response body: {response_text}"))?;
+        if let Some(errors) = decoded_response.error_messages {
+            return Err(anyhow!("Jira API returned errors: {}", errors.join(", ")));
+        }
 
-            if let Some(errors) = decoded_response.error_messages {
-                return Err(anyhow!("Jira API returned errors: {}", errors.join(", ")));
-            }
-
-            let issues = decoded_response.issues.ok_or_else(|| anyhow!("JiraSearchResponse is missing 'issues' field and did not provide error messages."))?;
-
+        if let Some(issues) = decoded_response.issues {
             let work: Vec<_> = issues
                 .iter()
                 .map(|issue| Work {
@@ -170,6 +162,7 @@ async fn process_project(
                         .map(|s| s.to_string()),
                 })
                 .collect();
+            data.work.extend(work);
 
             let people: Vec<Person> = issues
                 .iter()
@@ -186,33 +179,21 @@ async fn process_project(
                         name: p.display_name.clone(),
                     })
                 })
-                .unique_by(|p| p.id.clone())
                 .collect();
+            data.people.extend(people);
+        }
 
-            Ok::<Data, Error>(Data { work, people })
-        });
-
-        if set.len() < max_results {
+        next_page_token = decoded_response.next_page_token;
+        if next_page_token.is_none() {
             break;
         }
-        start_at += max_results;
     }
 
-    let mut data = Data::default();
-    while let Some(res) = set.join_next().await {
-        match res {
-            Ok(Ok(d)) => {
-                data.work.extend(d.work);
-                data.people.extend(d.people);
-            }
-            Ok(Err(e)) => {
-                eprintln!(
-                    "Warning: Could not fetch work items batch for project {project_key}: {e}"
-                )
-            }
-            Err(e) => eprintln!("Warning: Batch task failed for project {project_key}: {e}"),
-        }
-    }
+    data.people = data
+        .people
+        .into_iter()
+        .unique_by(|p| p.id.clone())
+        .collect();
 
     Ok(data)
 }
