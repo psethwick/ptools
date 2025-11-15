@@ -120,8 +120,10 @@ async fn process_project(
             .send()
             .await?;
         let response_text = search_response.text().await?;
-        let decoded_response = serde_json::from_str::<JiraSearchResponse>(&response_text)
-            .map_err(|e| anyhow!("Failed to decode JiraSearchResponse: {e}. Response body: {response_text}"))?;
+        let decoded_response =
+            serde_json::from_str::<JiraSearchResponse>(&response_text).map_err(|e| {
+                anyhow!("Failed to decode JiraSearchResponse: {e}. Response body: {response_text}")
+            })?;
 
         if let Some(errors) = decoded_response.error_messages {
             return Err(anyhow!("Jira API returned errors: {}", errors.join(", ")));
@@ -180,7 +182,7 @@ async fn process_project(
                     })
                 })
                 .collect();
-            data.people.extend(people);
+            // data.people.extend(people);
         }
 
         next_page_token = decoded_response.next_page_token;
