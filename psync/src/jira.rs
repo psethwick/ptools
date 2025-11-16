@@ -134,7 +134,7 @@ async fn process_project(
                 .iter()
                 .map(|issue| Work {
                     remote_id,
-                    id: issue.id.clone(),
+                    id: issue.key.clone(),
                     version: None,
                     url: Some(issue.url.clone()),
                     project: issue.fields.project["key"]
