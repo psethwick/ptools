@@ -101,6 +101,7 @@ impl Person {
         )
         .bind(self.remote_id)
         .bind(&self.id)
+        .bind(&self.name)
         .execute(executor)
         .await?;
 

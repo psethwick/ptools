@@ -182,7 +182,7 @@ async fn process_project(
                     })
                 })
                 .collect();
-            // data.people.extend(people);
+            data.people.extend(people);
         }
 
         next_page_token = decoded_response.next_page_token;
@@ -190,12 +190,6 @@ async fn process_project(
             break;
         }
     }
-
-    data.people = data
-        .people
-        .into_iter()
-        .unique_by(|p| p.id.clone())
-        .collect();
 
     Ok(data)
 }
@@ -237,6 +231,12 @@ impl RemoteSync for Jira {
                 Err(e) => eprintln!("Task join error: {e}"),
             }
         }
+
+        data.people = data
+            .people
+            .into_iter()
+            .unique_by(|p| p.id.clone())
+            .collect();
 
         Ok(data)
     }
