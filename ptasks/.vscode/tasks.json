@@ -23,6 +23,22 @@
             "label": "build-sass",
             "type": "shell",
             "command": "echo 'Building Sass...' && sleep 2"
+        },
+        {
+            "label": "cwd-test",
+            "type": "shell",
+            "command": "echo `pwd`",
+            "options": {
+                "cwd": "/home"
+            }
+        },
+        {
+            "label": "cwd-workspace-folder",
+            "type": "shell",
+            "command": "echo `pwd`",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
         }
     ]
 }
