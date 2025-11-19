@@ -137,6 +137,8 @@ fn execute_task(
             // not just assume
             // pick list we can do easily, too
             println!("> Input required for task '{}'", task.label);
+            // TODO: we should also use the prompt from the input, not just make something
+            // up
             let value = Text::new(&format!("Enter value for '{}':", var_name))
                 .prompt()
                 .context("User cancelled input prompt")?;
