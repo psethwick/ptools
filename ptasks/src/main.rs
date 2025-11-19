@@ -143,7 +143,12 @@ fn execute_task(task: &Task, all_tasks: &HashMap<String, Task>) -> Result<()> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .with_context(|| format!("Failed to spawn command: {command_name}"))?;
+        .with_context(|| {
+            format!(
+                "Failed to spawn command: {command_name} with {:?}",
+                &task.options
+            )
+        })?;
 
     let status = child.wait().context("Failed to wait for command")?;
 
@@ -174,7 +179,7 @@ fn main() -> Result<()> {
     let selected_task = Select::new("Select a task to run", task_labels).prompt()?;
 
     if let Err(e) = execute_task(&selected_task, &task_map) {
-        eprintln!("\nError running task '{}':\n{}", selected_task.label, e);
+        eprintln!("\nError running task '{}':\n{:#?}", selected_task.label, e);
         std::process::exit(1);
     }
 
