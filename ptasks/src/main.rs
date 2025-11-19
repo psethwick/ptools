@@ -42,6 +42,9 @@ struct TasksFile {
 
 fn read_tasks_from_file<P: AsRef<Path>>(path: P) -> Result<Vec<Task>> {
     let file_content = fs::read_to_string(path).context("Failed to read tasks.json")?;
+    let current_working_dir = std::env::current_dir().context("Failed to get current dir")?;
+    let cwd_str = current_working_dir.to_string_lossy();
+    let file_content = file_content.replace("${workspaceFolder}", &cwd_str);
     let tasks_file: TasksFile =
         json5::from_str(&file_content).context("Failed to parse tasks.json")?;
     Ok(tasks_file.tasks)
