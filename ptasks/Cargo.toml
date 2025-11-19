@@ -8,3 +8,4 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 json5 = "0.4.1"
 inquire = "0.7.5"
+regex = "1.12.2"
