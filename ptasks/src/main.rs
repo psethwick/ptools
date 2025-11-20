@@ -1,18 +1,17 @@
 use anyhow::{Context, Result};
 use inquire::{Select, Text};
-use std::sync::LazyLock;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fmt::format;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::LazyLock;
 use std::thread;
 
-static INPUT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\$\{input:([^}]+)\}").unwrap()
-});
+static INPUT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{input:([^}]+)\}").unwrap());
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -135,6 +134,10 @@ fn execute_task(
         let var_name = caps.get(1).unwrap().as_str();
 
         if !input_values.contains_key(var_name) {
+            let input = all_inputs
+                .get(var_name)
+                .expect(&format!("input {var_name} not found in input array"));
+
             // TODO: we should be checking for the type of input (prompt)
             // not just assume
             // pick list we can do easily, too
