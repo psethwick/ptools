@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use inquire::{Select, Text};
+use std::sync::LazyLock;
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -8,6 +9,10 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
+
+static INPUT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\$\{input:([^}]+)\}").unwrap()
+});
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -64,7 +69,6 @@ fn read_tasks_file<P: AsRef<Path>>(path: P) -> Result<TasksFile> {
         json5::from_str(&file_content).context("Failed to parse tasks.json")?;
     Ok(tasks_file)
 }
-
 fn execute_task(
     task: &Task,
     all_tasks: &HashMap<String, Task>,
@@ -124,12 +128,10 @@ fn execute_task(
         .command
         .as_ref()
         .context("Task has no command to execute")?;
-    // TODO: lazy static or oncelock
-    let re = Regex::new(r"\$\{input:([^}]+)\}").unwrap();
 
     let mut input_values: HashMap<String, String> = HashMap::new();
 
-    for caps in re.captures_iter(raw_command) {
+    for caps in INPUT_RE.captures_iter(raw_command) {
         let var_name = caps.get(1).unwrap().as_str();
 
         if !input_values.contains_key(var_name) {
@@ -147,7 +149,7 @@ fn execute_task(
         }
     }
 
-    let command_name = re
+    let command_name = INPUT_RE
         .replace_all(raw_command, |caps: &regex::Captures| {
             let var_name = &caps[1];
             input_values.get(var_name).unwrap()
