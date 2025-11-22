@@ -94,7 +94,6 @@ fn execute_task(
                     let all_inputs_clone = all_inputs.to_owned();
 
                     let handle = thread::spawn(move || {
-                        
                         execute_task(&dep_task, &all_tasks_clone, &all_inputs_clone)
                     });
                     handles.push(handle);
@@ -120,7 +119,7 @@ fn execute_task(
 
     set_window_title(&task.label)?;
 
-    // TODO: tasks can _not_ have a command, this is wrong
+    // TODO: tasks _can_ not have a command, this is wrong
     // it's other types like npm or typescript
     // problemMatchers etc
     let raw_command = task
@@ -138,10 +137,10 @@ fn execute_task(
                 .get(var_name)
                 .unwrap_or_else(|| panic!("input {var_name} not found in input array"));
 
-            let prompt = input
-                .description
-                .as_ref()
-                .expect("prompt description should be set in input");
+            let prompt = match &input.description {
+                Some(p) => p,
+                None => &format!("Enter value for {}", input.id),
+            };
             let value = match input.input_type.as_str() {
                 "promptString" => Text::new(prompt)
                     .prompt()
