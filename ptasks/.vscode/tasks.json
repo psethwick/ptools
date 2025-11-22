@@ -45,12 +45,22 @@
             "type": "shell",
             "command": "echo ${input:revision_msg}"
         },
+        {
+            "label": "input-pick",
+            "type": "shell",
+            "command": "echo ${input:pick}"
+        },
     ],
     "inputs": [
         {
-            "type": "prompt",
+            "type": "promptString",
             "id": "revision_msg",
-            "prompt": "WHAT IS YOUR MAJOR MALFUNCTION"
+            "description": "WHAT IS YOUR MAJOR MALFUNCTION"
+        },
+        {
+            "type": "pickString",
+            "options": ["chicken", "fish"],
+            "id": "pick",
         }
     ]
 }
