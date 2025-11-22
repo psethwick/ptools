@@ -3,7 +3,6 @@ use inquire::{Select, Text};
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fmt::format;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -54,7 +53,8 @@ struct Input {
     id: String,
     description: Option<String>,
     options: Option<Vec<String>>,
-    default: Option<String>,
+    // TODO how is default supposed to work?
+    // default: Option<String>,
 }
 
 fn read_tasks_file<P: AsRef<Path>>(path: P) -> Result<TasksFile> {
@@ -138,15 +138,24 @@ fn execute_task(
                 .get(var_name)
                 .expect(&format!("input {var_name} not found in input array"));
 
-            // TODO: we should be checking for the type of input (prompt)
-            // not just assume
-            // pick list we can do easily, too
-            println!("> Input required for task '{}'", task.label);
-            // TODO: we should also use the prompt from the input, not just make something
-            // up
-            let value = Text::new(&format!("Enter value for '{}':", var_name))
-                .prompt()
-                .context("User cancelled input prompt")?;
+            let prompt = input
+                .description
+                .as_ref()
+                .expect("prompt description should be set in input");
+            let value = match input.input_type.as_str() {
+                "promptString" => Text::new(&prompt)
+                    .prompt()
+                    .context("User cancelled input prompt")?,
+                "pickString" => {
+                    let options = input
+                        .options
+                        .to_owned()
+                        .expect("pickString input should have options");
+                    Select::new(&prompt, options).prompt()?
+                }
+                "command" => unimplemented!("input type not supported"),
+                _ => unimplemented!("input type not supported"),
+            };
 
             input_values.insert(var_name.to_string(), value);
         }
