@@ -122,55 +122,73 @@ fn execute_task(
     // TODO: tasks _can_ not have a command, this is wrong
     // it's other types like npm or typescript
     // problemMatchers etc
-    let raw_command = task
-        .command
-        .as_ref()
-        .context("Task has no command to execute")?;
-
     let mut input_values: HashMap<String, String> = HashMap::new();
 
-    for caps in INPUT_RE.captures_iter(raw_command) {
-        let var_name = caps.get(1).unwrap().as_str();
+    let mut strings_to_scan: Vec<&str> = Vec::new();
+    if let Some(command) = &task.command {
+        strings_to_scan.push(command);
+    }
+    if let Some(args) = &task.args {
+        strings_to_scan.extend(args.iter().map(|s| s.as_str()));
+    }
 
-        if !input_values.contains_key(var_name) {
-            let input = all_inputs
-                .get(var_name)
-                .unwrap_or_else(|| panic!("input {var_name} not found in input array"));
+    for text in strings_to_scan {
+        for caps in INPUT_RE.captures_iter(text) {
+            let var_name = caps.get(1).unwrap().as_str();
 
-            let prompt = match &input.description {
-                Some(p) => p,
-                None => &format!("Enter value for {}", input.id),
-            };
-            let value = match input.input_type.as_str() {
-                "promptString" => Text::new(prompt)
-                    .prompt()
-                    .context("User cancelled input prompt")?,
-                "pickString" => {
-                    let options = input
-                        .options
-                        .to_owned()
-                        .expect("pickString input should have options");
-                    Select::new(prompt, options).prompt()?
-                }
-                "command" => unimplemented!("input type not supported"),
-                _ => unimplemented!("input type not supported"),
-            };
+            if !input_values.contains_key(var_name) {
+                let input = all_inputs
+                    .get(var_name)
+                    .unwrap_or_else(|| panic!("input {var_name} not found in input array"));
 
-            input_values.insert(var_name.to_string(), value);
+                let prompt = match &input.description {
+                    Some(p) => p,
+                    None => &format!("Enter value for {}", input.id),
+                };
+                let value = match input.input_type.as_str() {
+                    "promptString" => Text::new(prompt)
+                        .prompt()
+                        .context("User cancelled input prompt")?,
+                    "pickString" => {
+                        let options = input
+                            .options
+                            .to_owned()
+                            .expect("pickString input should have options");
+                        Select::new(prompt, options).prompt()?
+                    }
+                    "command" => unimplemented!("input type not supported"),
+                    _ => unimplemented!("input type not supported"),
+                };
+
+                input_values.insert(var_name.to_string(), value);
+            }
         }
     }
 
-    let command_name = INPUT_RE
-        .replace_all(raw_command, |caps: &regex::Captures| {
-            let var_name = &caps[1];
-            input_values.get(var_name).unwrap()
-        })
-        .to_string();
+    let replacer = |text: &str| {
+        INPUT_RE
+            .replace_all(text, |caps: &regex::Captures| {
+                let var_name = &caps[1];
+                input_values.get(var_name).unwrap()
+            })
+            .to_string()
+    };
+
+    let command_name = task
+        .command
+        .as_ref()
+        .map(|s| replacer(s))
+        .context("Task has no command to execute")?;
+
+    let final_args = task
+        .args
+        .as_ref()
+        .map(|args| args.iter().map(|arg| replacer(arg)).collect::<Vec<_>>());
 
     let mut command = match task.task_type.as_deref() {
         Some("process") => {
             let mut cmd = Command::new(&command_name);
-            if let Some(args) = &task.args {
+            if let Some(args) = &final_args {
                 cmd.args(args);
             }
             cmd
@@ -178,7 +196,7 @@ fn execute_task(
         _ => {
             // v****e defaults to "shell"
             let mut script = command_name.clone();
-            if let Some(args) = &task.args {
+            if let Some(args) = &final_args {
                 for i in 1..=args.len() {
                     script.push_str(&format!(" \"${i}\""));
                 }
@@ -187,7 +205,7 @@ fn execute_task(
             let mut cmd = Command::new("sh");
             cmd.arg("-c").arg(&script);
             cmd.arg(&command_name);
-            if let Some(args) = &task.args {
+            if let Some(args) = &final_args {
                 cmd.args(args);
             }
             cmd
