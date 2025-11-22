@@ -94,8 +94,8 @@ fn execute_task(
                     let all_inputs_clone = all_inputs.to_owned();
 
                     let handle = thread::spawn(move || {
-                        let result = execute_task(&dep_task, &all_tasks_clone, &all_inputs_clone);
-                        result
+                        
+                        execute_task(&dep_task, &all_tasks_clone, &all_inputs_clone)
                     });
                     handles.push(handle);
                 }
@@ -136,14 +136,14 @@ fn execute_task(
         if !input_values.contains_key(var_name) {
             let input = all_inputs
                 .get(var_name)
-                .expect(&format!("input {var_name} not found in input array"));
+                .unwrap_or_else(|| panic!("input {var_name} not found in input array"));
 
             let prompt = input
                 .description
                 .as_ref()
                 .expect("prompt description should be set in input");
             let value = match input.input_type.as_str() {
-                "promptString" => Text::new(&prompt)
+                "promptString" => Text::new(prompt)
                     .prompt()
                     .context("User cancelled input prompt")?,
                 "pickString" => {
@@ -151,7 +151,7 @@ fn execute_task(
                         .options
                         .to_owned()
                         .expect("pickString input should have options");
-                    Select::new(&prompt, options).prompt()?
+                    Select::new(prompt, options).prompt()?
                 }
                 "command" => unimplemented!("input type not supported"),
                 _ => unimplemented!("input type not supported"),
