@@ -11,7 +11,7 @@ use crate::azure_devops::AzureDevops;
 use crate::jira::Jira;
 use crate::remote::RemoteSync;
 
-pub async fn pull_remote(remote: &Remote, client: &Client, pool: &Pool) -> Result<(), Error> {
+pub async fn pull_remote_work(remote: &Remote, client: &Client, pool: &Pool) -> Result<(), Error> {
     let data: Data = match remote.kind {
         Kind::AzureDevops => {
             get_password(remote)

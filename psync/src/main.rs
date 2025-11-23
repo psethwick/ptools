@@ -60,9 +60,6 @@ async fn main() -> Result<()> {
     let pool = pstore::db::init().await?;
 
     match args.command {
-        Root::Time(time) => match time {
-            TimeCommand::Push => todo!(),
-        },
         Root::Work(w) => match w {
             WorkCommand::Add(a) => match a {
                 Add::AzureDevops { org, pat } => {
@@ -102,7 +99,7 @@ async fn main() -> Result<()> {
                     let client = client.clone();
                     let pool = pool.clone();
                     set.spawn(async move {
-                        if let Err(e) = psync::pull_remote(&remote, &client, &pool).await {
+                        if let Err(e) = psync::pull_remote_work(&remote, &client, &pool).await {
                             eprintln!("Sync failed: {e}");
                         }
                     });
@@ -118,6 +115,23 @@ async fn main() -> Result<()> {
                 let work_items = get_work(&pool).await?;
                 for item in work_items {
                     println!("{item:#?}");
+                }
+            }
+        },
+        Root::Time(time) => match time {
+            TimeCommand::Push => {
+                let client = reqwest::Client::new();
+                let remotes = get_remotes(&pool).await?;
+                let mut set = JoinSet::new();
+
+                for remote in remotes {
+                    let client = client.clone();
+                    let pool = pool.clone();
+                    set.spawn(async move {
+                        if let Err(e) = psync::pull_remote_work(&remote, &client, &pool).await {
+                            eprintln!("Sync failed: {e}");
+                        }
+                    });
                 }
             }
         },
