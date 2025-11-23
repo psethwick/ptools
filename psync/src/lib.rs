@@ -2,7 +2,7 @@ pub mod azure_devops;
 pub mod jira;
 pub mod remote;
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{Error, Result, anyhow};
 use pstore::models::{Data, Kind, Remote};
 use pstore::{db::Pool, queries::get_password};
 use reqwest::Client;
@@ -11,7 +11,7 @@ use crate::azure_devops::AzureDevops;
 use crate::jira::Jira;
 use crate::remote::RemoteSync;
 
-pub async fn sync_remote(remote: &Remote, client: &Client, pool: &Pool) -> Result<(), Error> {
+pub async fn pull_remote(remote: &Remote, client: &Client, pool: &Pool) -> Result<(), Error> {
     let data: Data = match remote.kind {
         Kind::AzureDevops => {
             get_password(remote)

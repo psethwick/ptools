@@ -1,6 +1,6 @@
-use pstore::db::Pool;
 use anyhow::Result;
 use async_trait::async_trait;
+use pstore::db::Pool;
 use pstore::models::Data;
 use reqwest::Client;
 

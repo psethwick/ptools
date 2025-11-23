@@ -1,15 +1,15 @@
-use pstore::models::{Data, Person, Work};
 use crate::remote::RemoteSync;
 use anyhow::{Error, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use pstore::db::Pool;
+use pstore::models::{Data, Person, Work};
 use pstore::queries::get_max_modified;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::task::JoinSet;
-use pstore::db::Pool;
 
 pub struct AzureDevops {
     pub org: String,
