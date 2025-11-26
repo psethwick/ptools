@@ -42,7 +42,7 @@ struct TaskOptions {
 #[serde(rename_all = "camelCase")]
 struct TasksFile {
     tasks: Vec<Task>,
-    inputs: Vec<Input>,
+    inputs: Option<Vec<Input>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -257,11 +257,13 @@ fn main() -> Result<()> {
         .map(|task| (task.label.clone(), task))
         .collect();
 
-    let input_map: HashMap<String, Input> = tasks_file
-        .inputs
-        .into_iter()
-        .map(|inp| (inp.id.clone(), inp))
-        .collect();
+    let input_map: HashMap<String, Input> = match tasks_file.inputs {
+        Some(inputs) => inputs
+            .into_iter()
+            .map(|inp| (inp.id.clone(), inp))
+            .collect(),
+        None => HashMap::default(),
+    };
 
     let task_labels: Vec<Task> = task_map.values().cloned().collect();
 
