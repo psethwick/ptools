@@ -38,14 +38,14 @@ pub async fn get_max_modified(
 }
 
 pub async fn add_remote(pool: &SqlitePool, kind: Kind, name: &str, password: String) -> Result<()> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
+    entry.set_password(&password)?;
     sqlx::query("INSERT OR REPLACE INTO remote (kind, name) VALUES (?, ?)")
         .bind(kind)
         .bind(name)
         .execute(pool)
         .await?;
 
-    let entry = Entry::new(SERVICE_NAME, &format!("{kind}-{name}"))?;
-    entry.set_password(&password)?;
     Ok(())
 }
 
