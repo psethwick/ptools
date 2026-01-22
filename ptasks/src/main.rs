@@ -23,6 +23,8 @@ struct Task {
     options: Option<TaskOptions>,
     depends_on: Option<Vec<String>>,
     depends_order: Option<String>,
+    script: Option<String>,
+    path: Option<String>,
 }
 
 impl std::fmt::Display for Task {
@@ -119,9 +121,6 @@ fn execute_task(
 
     set_window_title(&task.label)?;
 
-    // TODO: tasks _can_ not have a command, this is wrong
-    // it's other types like npm or typescript
-    // problemMatchers etc
     let mut input_values: HashMap<String, String> = HashMap::new();
 
     let mut strings_to_scan: Vec<&str> = Vec::new();
@@ -174,19 +173,29 @@ fn execute_task(
             .to_string()
     };
 
-    let command_name = task
-        .command
-        .as_ref()
-        .map(|s| replacer(s))
-        .context("Task has no command to execute")?;
-
-    let final_args = task
-        .args
-        .as_ref()
-        .map(|args| args.iter().map(|arg| replacer(arg)).collect::<Vec<_>>());
-
     let mut command = match task.task_type.as_deref() {
+        Some("npm") => {
+            let mut cmd = Command::new("npm");
+            cmd.arg("run");
+            if let Some(script) = &task.script {
+                cmd.arg(script);
+            } else {
+                anyhow::bail!("npm task requires a 'script' property.");
+            }
+            cmd
+        }
         Some("process") => {
+            let command_name = task
+                .command
+                .as_ref()
+                .map(|s| replacer(s))
+                .context("Task has no command to execute")?;
+
+            let final_args = task
+                .args
+                .as_ref()
+                .map(|args| args.iter().map(|arg| replacer(arg)).collect::<Vec<_>>());
+
             let mut cmd = Command::new(&command_name);
             if let Some(args) = &final_args {
                 cmd.args(args);
@@ -195,6 +204,17 @@ fn execute_task(
         }
         _ => {
             // v****e defaults to "shell"
+            let command_name = task
+                .command
+                .as_ref()
+                .map(|s| replacer(s))
+                .context("Task has no command to execute")?;
+
+            let final_args = task
+                .args
+                .as_ref()
+                .map(|args| args.iter().map(|arg| replacer(arg)).collect::<Vec<_>>());
+
             let mut script = command_name.clone();
             if let Some(args) = &final_args {
                 for i in 1..=args.len() {
@@ -212,13 +232,27 @@ fn execute_task(
         }
     };
 
-    if let Some(options) = &task.options {
-        if let Some(cwd) = &options.cwd {
-            command.current_dir(cwd);
-        }
-        if let Some(env) = &options.env {
-            command.envs(env);
-        }
+    let mut cwd_to_use: Option<String> = None;
+    if let Some(options) = &task.options
+        && let Some(cwd) = &options.cwd
+    {
+        cwd_to_use = Some(cwd.clone());
+    }
+
+    if cwd_to_use.is_none()
+        && let Some(path) = &task.path
+    {
+        cwd_to_use = Some(path.clone());
+    }
+
+    if let Some(cwd) = cwd_to_use {
+        command.current_dir(cwd);
+    }
+
+    if let Some(options) = &task.options
+        && let Some(env) = &options.env
+    {
+        command.envs(env);
     }
 
     let mut child = command
@@ -227,8 +261,9 @@ fn execute_task(
         .spawn()
         .with_context(|| {
             format!(
-                "Failed to spawn command: {command_name} with {:?}",
-                &task.options
+                "Failed to spawn command for task: {:?}. CWD: {:?}",
+                &task.label,
+                command.get_current_dir()
             )
         })?;
 
