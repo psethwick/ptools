@@ -114,5 +114,5 @@ pub struct Timesheet {
     pub remote_id: i64,
     pub ticket_id: String,
     pub date: String,
-    pub duration_seconds: i64,
+    pub duration: String,
 }

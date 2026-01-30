@@ -123,18 +123,18 @@ impl Timesheet {
     {
         sqlx::query(
             r#"
-            INSERT INTO timesheet (remote_id, ticket_id, date, duration_seconds)
+            INSERT INTO timesheet (remote_id, ticket_id, date, duration)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(remote_id, ticket_id, date) DO UPDATE SET
-                duration_seconds = excluded.duration_seconds,
+                duration = excluded.duration,
                 synced = 0
-            WHERE timesheet.duration_seconds != excluded.duration_seconds
+            WHERE timesheet.duration != excluded.duration
             "#,
         )
         .bind(self.remote_id)
         .bind(&self.ticket_id)
         .bind(&self.date)
-        .bind(self.duration_seconds)
+        .bind(&self.duration)
         .execute(executor)
         .await?;
 

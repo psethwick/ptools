@@ -87,18 +87,22 @@ impl Day {
             })
             .into_group_map()
         {
-            if let Some(remote) = remotes.iter().find(|s| s.name.eq_ignore_ascii_case(remote_name)) {
-                let total_seconds = (duration.iter().sum::<f64>() * 3600.0) as i64;
+            if let Some(remote) = remotes
+                .iter()
+                .find(|s| s.name.eq_ignore_ascii_case(remote_name))
+            {
+                let total_hours = duration.iter().sum::<f64>();
                 let date_str = self.date.format("%Y-%m-%d").to_string();
+                let duration_str = format!("{:.2}h", total_hours);
 
                 let ts = Timesheet {
                     remote_id: remote.id,
                     ticket_id: ticket_id.clone(),
                     date: date_str,
-                    duration_seconds: total_seconds,
+                    duration: duration_str.clone(),
                 };
                 ts.save(&mut *tx).await?;
-                println!("Stored {total_seconds}s for {ticket_id}");
+                println!("Stored {duration_str} for {ticket_id}");
             } else {
                 eprintln!("Warning: Could not find remote for ticket {ticket_id}");
             }
