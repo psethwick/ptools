@@ -93,7 +93,7 @@ impl Day {
             {
                 let total_hours = duration.iter().sum::<f64>();
                 let date_str = self.date.format("%Y-%m-%d").to_string();
-                let duration_str = format!("{:.2}h", total_hours);
+                let duration_str = format!("{total_hours:.2}h");
 
                 let ts = Timesheet {
                     remote_id: remote.id,
