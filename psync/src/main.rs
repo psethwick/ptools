@@ -128,10 +128,16 @@ async fn main() -> Result<()> {
                     let client = client.clone();
                     let pool = pool.clone();
                     set.spawn(async move {
-                        if let Err(e) = psync::pull_remote_work(&remote, &client, &pool).await {
-                            eprintln!("Sync failed: {e}");
+                        if let Err(e) = psync::push_time(&remote, &client, &pool).await {
+                            eprintln!("Push failed for {}: {e}", remote.name);
                         }
                     });
+                }
+
+                while let Some(res) = set.join_next().await {
+                    if let Err(e) = res {
+                        eprintln!("Task execution failed: {e}");
+                    }
                 }
             }
         },

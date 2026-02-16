@@ -1,5 +1,5 @@
 use crate::SERVICE_NAME;
-use crate::models::{Kind, Person, Remote, Timesheet, Work};
+use crate::models::{Kind, Person, Remote, Timesheet, TimesheetRow, Work};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use keyring::Entry;
@@ -140,4 +140,33 @@ impl Timesheet {
 
         Ok(())
     }
+}
+
+pub async fn get_unsynced_timesheets(pool: &SqlitePool, remote_id: i64) -> Result<Vec<TimesheetRow>> {
+    let rows = sqlx::query_as::<_, TimesheetRow>(
+        r#"
+        SELECT t.id, t.remote_id, t.ticket_id, t.date, t.duration, r.kind, r.name
+        FROM timesheet t
+        JOIN remote r ON t.remote_id = r.id
+        WHERE t.synced = 0 AND t.remote_id = ?
+        "#,
+    )
+    .bind(remote_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+pub async fn mark_timesheets_synced(pool: &SqlitePool, ids: &[i64]) -> Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let placeholders: String = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query_str = format!("UPDATE timesheet SET synced = 1 WHERE id IN ({placeholders})");
+    let mut query = sqlx::query(&query_str);
+    for id in ids {
+        query = query.bind(id);
+    }
+    query.execute(pool).await?;
+    Ok(())
 }

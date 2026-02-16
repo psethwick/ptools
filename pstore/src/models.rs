@@ -116,3 +116,32 @@ pub struct Timesheet {
     pub date: String,
     pub duration: String,
 }
+
+#[derive(FromRow, Debug)]
+pub struct TimesheetRow {
+    pub id: i64,
+    pub remote_id: i64,
+    pub ticket_id: String,
+    pub date: String,
+    pub duration: String,
+    #[sqlx(try_from = "i32")]
+    pub kind: Kind,
+    pub name: String,
+}
+
+pub fn decimal_hours_to_jira(hours: f64) -> String {
+    if hours <= 0.0 {
+        return "0m".to_string();
+    }
+    let total_minutes = (hours * 60.0).round() as u64;
+    if total_minutes < 1 {
+        return "0m".to_string();
+    }
+    let h = total_minutes / 60;
+    let m = total_minutes % 60;
+    match (h, m) {
+        (0, m) => format!("{m}m"),
+        (h, 0) => format!("{h}h"),
+        (h, m) => format!("{h}h {m}m"),
+    }
+}

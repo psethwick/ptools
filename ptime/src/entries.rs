@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::NaiveDate;
 use itertools::Itertools;
-use pstore::models::Timesheet;
+use pstore::models::{Timesheet, decimal_hours_to_jira};
 use serde::Serialize;
 
 // TODO: client and task should maybe also be Option?
@@ -93,7 +93,7 @@ impl Day {
             {
                 let total_hours = duration.iter().sum::<f64>();
                 let date_str = self.date.format("%Y-%m-%d").to_string();
-                let duration_str = format!("{total_hours:.2}h");
+                let duration_str = decimal_hours_to_jira(total_hours);
 
                 let ts = Timesheet {
                     remote_id: remote.id,

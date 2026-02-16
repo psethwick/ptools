@@ -194,6 +194,102 @@ async fn process_project(
     Ok(data)
 }
 
+#[derive(Deserialize, Debug)]
+pub struct JiraWorklogEntry {
+    pub id: String,
+    pub author: JiraWorklogAuthor,
+    pub started: String,
+    #[serde(rename = "timeSpentSeconds")]
+    pub time_spent_seconds: i64,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct JiraWorklogAuthor {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct JiraWorklogResponse {
+    pub worklogs: Vec<JiraWorklogEntry>,
+}
+
+#[derive(Deserialize, Debug)]
+struct JiraMyselfResponse {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+}
+
+impl Jira {
+    fn base_url(&self) -> String {
+        format!("https://{}.atlassian.net", self.domain)
+    }
+
+    pub async fn get_myself(&self, client: &Client) -> Result<String> {
+        let url = format!("{}/rest/api/3/myself", self.base_url());
+        let resp: JiraMyselfResponse = client
+            .get(&url)
+            .basic_auth(&self.user, Some(&self.password))
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(resp.account_id)
+    }
+
+    pub async fn get_worklogs(&self, client: &Client, ticket: &str) -> Result<Vec<JiraWorklogEntry>> {
+        let url = format!("{}/rest/api/3/issue/{ticket}/worklog", self.base_url());
+        let resp: JiraWorklogResponse = client
+            .get(&url)
+            .basic_auth(&self.user, Some(&self.password))
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(resp.worklogs)
+    }
+
+    pub async fn add_worklog(&self, client: &Client, ticket: &str, date: &str, duration: &str) -> Result<()> {
+        let url = format!("{}/rest/api/3/issue/{ticket}/worklog", self.base_url());
+        let started = format!("{date}T00:00:00.000+0000");
+        let body = serde_json::json!({
+            "started": started,
+            "timeSpent": duration,
+        });
+        let resp = client
+            .post(&url)
+            .basic_auth(&self.user, Some(&self.password))
+            .json(&body)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await?;
+            return Err(anyhow!("Failed to add worklog for {ticket}: {status} {text}"));
+        }
+        Ok(())
+    }
+
+    pub async fn update_worklog(&self, client: &Client, ticket: &str, worklog_id: &str, duration: &str) -> Result<()> {
+        let url = format!("{}/rest/api/3/issue/{ticket}/worklog/{worklog_id}", self.base_url());
+        let body = serde_json::json!({
+            "timeSpent": duration,
+        });
+        let resp = client
+            .put(&url)
+            .basic_auth(&self.user, Some(&self.password))
+            .json(&body)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await?;
+            return Err(anyhow!("Failed to update worklog {worklog_id} for {ticket}: {status} {text}"));
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl RemoteSync for Jira {
     async fn sync(&self, client: &Client, remote_id: i64, pool: &Pool) -> Result<Data, Error> {
