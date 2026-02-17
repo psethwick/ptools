@@ -102,7 +102,6 @@ impl Day {
                     duration: duration_str.clone(),
                 };
                 ts.save(&mut *tx).await?;
-                println!("Stored {duration_str} for {ticket_id}");
             } else {
                 eprintln!("Warning: Could not find remote for ticket {ticket_id}");
             }
