@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(cargo build:*)",
+      "Bash(wc:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo test:*)",
+      "WebFetch(domain:oxc.rs)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(cargo info:*)",
+      "Bash(head:*)",
+      "Bash(cargo nextest:*)",
+      "Bash(grep:*)",
+      "Bash(cargo metadata:*)",
+      "WebSearch",
+      "WebFetch(domain:rolldown.rs)",
+      "Bash(cargo add:*)",
+      "Bash(cargo fetch:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo search:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo fmt:*)",
+      "WebFetch(domain:wayland.app)",
+      "WebFetch(domain:docs.vicinae.com)"
+    ]
+  }
+}

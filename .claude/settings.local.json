@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for dir:*)",
+      "Bash(do echo:*)",
+      "Read(//home/pseth/personal/ptools/**)",
+      "Bash(done)",
+      "Bash(xargs -I {} ls -la {})",
+      "Bash(cargo --version)",
+      "Bash(rustc --version)"
+    ]
+  }
+}

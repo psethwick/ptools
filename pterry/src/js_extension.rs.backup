@@ -1,0 +1,191 @@
+use crate::extension_trait::{Extension, ExtensionError, ExtensionItem, ExtensionMetadata};
+use async_trait::async_trait;
+use rquickjs::prelude::Rest;
+use std::fmt;
+
+pub struct JsExtension {
+    metadata: ExtensionMetadata,
+    js_code: String,
+}
+
+impl fmt::Debug for JsExtension {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("JsExtension")
+            .field("metadata", &self.metadata)
+            .finish()
+    }
+}
+
+impl JsExtension {
+    pub async fn new(
+        metadata: ExtensionMetadata, 
+        js_code: &str,
+    ) -> Result<Self, ExtensionError> {
+        let extension = JsExtension {
+            metadata,
+            js_code: js_code.to_string(),
+        };
+        
+        Ok(extension)
+    }
+    
+    fn execute_js_search(&self, query: &str) -> Result<Vec<ExtensionItem>, ExtensionError> {
+        use rquickjs::{Runtime, Context};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        
+        let runtime = Runtime::new().map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+        let context = Context::full(&runtime).map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+        
+        context.with(|ctx| -> Result<Vec<ExtensionItem>, ExtensionError> {
+            // Create the global raycast object
+            let raycast_obj = rquickjs::Object::new(ctx.clone())
+                .map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+            
+            // Use Rc<RefCell<Vec<ExtensionItem>>> to share mutable state with the closure
+            let results = Rc::new(RefCell::new(Vec::new()));
+            let results_clone = results.clone();
+            
+            // Create updateList function that captures results directly
+            let update_list_func = rquickjs::Function::new(ctx.clone(), move |_ctx: rquickjs::Ctx, args: Rest<rquickjs::Value>| {
+                if args.len() > 0 {
+                    if let Some(results_array) = args[0].clone().into_array() {
+                        let mut items = Vec::new();
+                        
+                        for i in 0..results_array.len() {
+                            if let Ok(item_obj) = results_array.get::<rquickjs::Object>(i) {
+                                if let (Ok(title), Ok(action)) = (
+                                    item_obj.get::<_, rquickjs::String>("title"),
+                                    item_obj.get::<_, rquickjs::String>("action")
+                                ) {
+                                    let subtitle = item_obj.get::<_, rquickjs::String>("subtitle").ok().map(|s| s.to_string());
+                                    let icon = item_obj.get::<_, rquickjs::String>("icon").ok().map(|s| s.to_string());
+                                    let id = item_obj.get::<_, rquickjs::String>("id").ok().map(|s| s.to_string());
+                                    
+                                    items.push(ExtensionItem {
+                                        title: title.to_string().unwrap_or_default(),
+                                        subtitle: subtitle.transpose().ok().flatten(),
+                                        icon: icon.transpose().ok().flatten(),
+                                        action: action.to_string().unwrap_or_default(),
+                                        id: id.transpose().ok().flatten(),
+                                    });
+                                }
+                            }
+                        }
+                        
+                        *results_clone.borrow_mut() = items;
+                    }
+                }
+                Ok::<(), rquickjs::Error>(())
+            }).map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+            
+            raycast_obj.set("updateList", update_list_func)
+                .map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+            
+            // Set globalThis.raycast
+            let global = ctx.globals();
+            global.set("raycast", raycast_obj)
+                .map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+            
+            // Execute the JavaScript code
+            ctx.eval::<(), _>(self.js_code.as_str())
+                .map_err(|e| ExtensionError::RuntimeError(format!("JS execution error: {}", e)))?;
+            
+            // Call the onSearch function
+            let on_search_fn: Result<rquickjs::Function, _> = global.get("onSearch");
+            if let Ok(on_search) = on_search_fn {
+                let js_query = rquickjs::String::from_str(ctx.clone(), query)
+                    .map_err(|e| ExtensionError::RuntimeError(format!("Failed to create JS string: {}", e)))?;
+                
+                match on_search.call::<_, ()>((js_query,)) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        // Try calling without parameters as a fallback
+                        match on_search.call::<_, ()>(()) {
+                            Ok(_) => {},
+                            Err(e2) => {
+                                return Err(ExtensionError::ExecutionError(format!("onSearch error: {} (fallback: {})", e, e2)));
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Extract the results from the RefCell
+            Ok(results.borrow().clone())
+        })
+    }
+}
+
+#[async_trait]
+impl Extension for JsExtension {
+    fn metadata(&self) -> &ExtensionMetadata {
+        &self.metadata
+    }
+
+    async fn initialize(&mut self) -> Result<(), ExtensionError> {
+        // JavaScript initialization happens when we execute the code
+        Ok(())
+    }
+
+    async fn on_search(&self, query: &str) -> Result<Vec<ExtensionItem>, ExtensionError> {
+        // Execute JavaScript and capture results directly
+        self.execute_js_search(query)
+    }
+
+    async fn on_action(&self, action: &str, item_id: Option<&str>) -> Result<(), ExtensionError> {
+        use rquickjs::{Runtime, Context};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        
+        let runtime = Runtime::new().map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+        let context = Context::full(&runtime).map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+        
+        context.with(|ctx| -> Result<(), ExtensionError> {
+            // Create the global raycast object (same as in search method)
+            let raycast_obj = rquickjs::Object::new(ctx.clone())
+                .map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+            
+            // Set up the raycast global object
+            let global = ctx.globals();
+            global.set("raycast", raycast_obj)
+                .map_err(|e| ExtensionError::RuntimeError(e.to_string()))?;
+            
+            // Execute the JavaScript code to load the extension
+            ctx.eval::<(), _>(self.js_code.as_str())
+                .map_err(|e| ExtensionError::RuntimeError(format!("JS execution error: {}", e)))?;
+            
+            // Call the onAction function if it exists - use the EXACT same pattern as search function
+            let on_action_fn: Result<rquickjs::Function, _> = global.get("onAction");
+            if let Ok(on_action) = on_action_fn {
+                // Use the EXACT same pattern as the search function
+                if let Some(item_id_str) = item_id {
+                    let js_action = rquickjs::String::from_str(ctx.clone(), action)
+                        .map_err(|e| ExtensionError::RuntimeError(format!("Failed to create action string: {}", e)))?;
+                    let js_item_id = rquickjs::String::from_str(ctx.clone(), item_id_str)
+                        .map_err(|e| ExtensionError::RuntimeError(format!("Failed to create item_id string: {}", e)))?;
+                    
+                    match on_action.call::<_, ()>((js_action, js_item_id)) {
+                        Ok(()) => {},
+                        Err(e) => return Err(ExtensionError::RuntimeError(format!("Action execution error: {}", e)))
+                    }
+                } else {
+                    let js_action = rquickjs::String::from_str(ctx.clone(), action)
+                        .map_err(|e| ExtensionError::RuntimeError(format!("Failed to create action string: {}", e)))?;
+                    
+                    match on_action.call::<_, ()>((js_action,)) {
+                        Ok(()) => {},
+                        Err(e) => return Err(ExtensionError::RuntimeError(format!("Action execution error: {}", e)))
+                    }
+                }
+            }
+            
+            Ok(())
+        })
+    }
+
+    async fn cleanup(&self) -> Result<(), ExtensionError> {
+        // QuickJS runtime is cleaned up automatically when it goes out of scope
+        Ok(())
+    }
+}

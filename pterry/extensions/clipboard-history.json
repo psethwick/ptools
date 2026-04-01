@@ -1,0 +1,8 @@
+{
+    "name": "clipboard-history",
+    "version": "1.0.0",
+    "description": "Clipboard history manager for accessing previously copied items",
+    "language": "javascript",
+    "entry_point": "clipboard-history.js",
+    "permissions": ["clipboard"]
+}

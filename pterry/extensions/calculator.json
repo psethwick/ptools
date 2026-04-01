@@ -1,0 +1,8 @@
+{
+    "name": "calculator",
+    "version": "1.0.0",
+    "description": "A simple calculator extension for mathematical expressions",
+    "language": "javascript",
+    "entry_point": "calculator.js",
+    "permissions": ["clipboard"]
+}

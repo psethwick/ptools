@@ -1,0 +1,179 @@
+// Clipboard History Extension for Raycast Clone
+// Manages clipboard history and allows pasting previous items
+
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMins < 1) {
+        return "Just now";
+    } else if (diffMins < 60) {
+        return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    } else if (diffHours < 24) {
+        return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    } else {
+        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    }
+}
+
+function truncateText(text, maxLength = 80) {
+    if (text.length <= maxLength) {
+        return text;
+    }
+    return text.substring(0, maxLength) + '...';
+}
+
+function fuzzyMatch(query, target) {
+    if (!query) return true;
+    
+    const queryLower = query.toLowerCase();
+    const targetLower = target.toLowerCase();
+    
+    // Check if query is a substring of target
+    if (targetLower.includes(queryLower)) {
+        return true;
+    }
+    
+    // Fuzzy match - check if all characters of query appear in target in order
+    let queryIndex = 0;
+    for (let i = 0; i < targetLower.length && queryIndex < queryLower.length; i++) {
+        if (targetLower[i] === queryLower[queryIndex]) {
+            queryIndex++;
+        }
+    }
+    
+    return queryIndex === queryLower.length;
+}
+
+function onSearch(query) {
+    // Request clipboard history from the main application
+    if (typeof globalThis.raycast !== 'undefined' && globalThis.raycast.getClipboardHistory) {
+        const history = globalThis.raycast.getClipboardHistory();
+        
+        if (!query || query.trim() === '') {
+            // Show all clipboard history items when no query
+            const results = history.map(function(item, index) {
+                return {
+                    title: truncateText(item.text),
+                    subtitle: formatTimestamp(item.timestamp),
+                    icon: '📋',
+                    action: 'clipboard-paste:' + index.toString(),
+                    id: 'clipboard-' + index.toString()
+                };
+            });
+            
+            globalThis.raycast.updateList(results);
+            return;
+        }
+        
+        // Filter clipboard history based on fuzzy search
+        const filteredItems = history.filter(function(item) {
+            return fuzzyMatch(query, item.text);
+        });
+        
+        if (filteredItems.length === 0) {
+            // Show "no results" message
+            const results = [{
+                title: 'No matching clipboard items',
+                subtitle: 'Try a different search term',
+                icon: '🔍',
+                action: 'clipboard-no-results'
+            }];
+            
+            globalThis.raycast.updateList(results);
+        } else {
+            // Show filtered results
+            const results = filteredItems.map(function(item, index) {
+                return {
+                    title: truncateText(item.text),
+                    subtitle: formatTimestamp(item.timestamp),
+                    icon: '📋',
+                    action: 'clipboard-paste:' + index.toString(),
+                    id: 'clipboard-' + index.toString()
+                };
+            });
+            
+            globalThis.raycast.updateList(results);
+        }
+    } else {
+        // Fallback to mock data if clipboard API is not available
+        console.log('Clipboard API not available, using mock data');
+        
+        // Mock clipboard history data
+        var CLIPBOARD_HISTORY = [
+            { text: "Hello, World!", timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
+            { text: "npm install egui-raycast-clone2", timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString() },
+            { text: "https://github.com/user/raycast-clone", timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
+            { text: "todo: implement clipboard history", timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString() },
+            { text: "password123", timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString() }
+        ];
+        
+        if (!query || query.trim() === '') {
+            // Show all clipboard history items when no query
+            const results = CLIPBOARD_HISTORY.map(function(item, index) {
+                return {
+                    title: truncateText(item.text),
+                    subtitle: formatTimestamp(item.timestamp),
+                    icon: '📋',
+                    action: 'clipboard-paste:' + index.toString(),
+                    id: 'clipboard-' + index.toString()
+                };
+            });
+            
+            globalThis.raycast.updateList(results);
+            return;
+        }
+        
+        // Filter clipboard history based on fuzzy search
+        const filteredItems = CLIPBOARD_HISTORY.filter(function(item) {
+            return fuzzyMatch(query, item.text);
+        });
+        
+        if (filteredItems.length === 0) {
+            // Show "no results" message
+            const results = [{
+                title: 'No matching clipboard items',
+                subtitle: 'Try a different search term',
+                icon: '🔍',
+                action: 'clipboard-no-results'
+            }];
+            
+            globalThis.raycast.updateList(results);
+        } else {
+            // Show filtered results
+            const results = filteredItems.map(function(item, index) {
+                return {
+                    title: truncateText(item.text),
+                    subtitle: formatTimestamp(item.timestamp),
+                    icon: '📋',
+                    action: 'clipboard-paste:' + index.toString(),
+                    id: 'clipboard-' + index.toString()
+                };
+            });
+            
+            globalThis.raycast.updateList(results);
+        }
+    }
+}
+
+function onAction(action, itemId) {
+    console.log('Clipboard onAction called with action:', action, 'itemId:', itemId);
+    
+    if (action.startsWith('clipboard-paste:')) {
+        let index = parseInt(action.split(':')[1]);
+        console.log('Clipboard paste action, index:', index);
+        
+        // The main application will handle the actual clipboard paste
+        console.log('Requesting clipboard item paste at index:', index);
+    } else if (action === 'clipboard-no-results') {
+        console.log('Clipboard no results action');
+    }
+}
+
+// Make the functions available globally
+globalThis.onSearch = onSearch;
+globalThis.onAction = onAction;
