@@ -1491,6 +1491,8 @@ fn reclaim_focus_on_text_input(
 }
 
 impl eframe::App for App {
+    fn ui(&mut self, _ui: &mut egui::Ui, _frame: &mut eframe::Frame) {}
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_messages();
         self.handle_input(ctx);
@@ -1579,6 +1581,7 @@ impl eframe::App for App {
                                 response.rect.expand(2.0),
                                 4.0,
                                 egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 150, 255)),
+                                egui::StrokeKind::Middle,
                             );
                         }
 
@@ -1601,7 +1604,7 @@ impl eframe::App for App {
                                 egui::Frame::none()
                                     .fill(egui::Color32::from_rgb(40, 60, 100))
                                     .rounding(4.0)
-                                    .inner_margin(egui::Margin::symmetric(4.0, 2.0))
+                                    .inner_margin(egui::Margin::symmetric(4, 2))
                                     .show(ui, |ui| {
                                         ui.label(label);
                                     });
@@ -1660,7 +1663,7 @@ impl eframe::App for App {
                             .fill(ui.visuals().faint_bg_color)
                             .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(50)))
                             .rounding(6.0)
-                            .inner_margin(egui::Margin::same(12.0));
+                            .inner_margin(egui::Margin::same(12));
 
                         frame.show(ui, |ui| {
                             egui::ScrollArea::vertical()

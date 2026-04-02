@@ -167,7 +167,7 @@ impl ActionPanel {
                     .fill(egui::Color32::from_gray(30))
                     .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(60)))
                     .rounding(8.0)
-                    .inner_margin(egui::Margin::same(8.0));
+                    .inner_margin(egui::Margin::same(8));
 
                 frame.show(ui, |ui| {
                     ui.set_width(400.0);
@@ -763,7 +763,7 @@ impl List {
         // Title at bottom, clipped to tile width.
         let title_pos = Pos2::new(rect.min.x + 4.0, rect.max.y - title_h + 2.0);
         let max_title_w = tile_size - 8.0;
-        let galley = ui.fonts(|f| {
+        let galley = ui.fonts_mut(|f| {
             f.layout(
                 item.title.clone(),
                 FontId::monospace(11.0),
@@ -888,7 +888,7 @@ impl List {
             let mut cursor_x = right_edge;
             for label in item.accessories.iter().rev() {
                 let text_shape =
-                    ui.fonts(|f| f.layout_no_wrap(label.clone(), acc_font.clone(), acc_color));
+                    ui.fonts_mut(|f| f.layout_no_wrap(label.clone(), acc_font.clone(), acc_color));
                 cursor_x -= text_shape.size().x;
                 ui.painter().galley(
                     Pos2::new(cursor_x, rect.center().y - text_shape.size().y / 2.0),
@@ -1592,7 +1592,7 @@ impl ToastManager {
             // Measure text width so we can centre the toast.
             let font_id = FontId::monospace(13.0);
             let galley =
-                ctx.fonts(|f| f.layout_no_wrap(toast.message.clone(), font_id.clone(), text_color));
+                ctx.fonts_mut(|f| f.layout_no_wrap(toast.message.clone(), font_id.clone(), text_color));
             let padding = Vec2::new(16.0, 8.0);
             let toast_w = galley.size().x + padding.x * 2.0;
             let toast_h = galley.size().y + padding.y * 2.0;
@@ -1625,7 +1625,7 @@ impl Detail {
             .fill(ui.visuals().faint_bg_color)
             .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(50)))
             .rounding(6.0)
-            .inner_margin(egui::Margin::same(12.0));
+            .inner_margin(egui::Margin::same(12));
 
         frame.show(ui, |ui| {
             ui.set_min_width(ui.available_width());
@@ -1715,7 +1715,7 @@ impl Detail {
         let frame = egui::Frame::none()
             .fill(color)
             .rounding(4.0)
-            .inner_margin(egui::Margin::symmetric(6.0, 2.0));
+            .inner_margin(egui::Margin::symmetric(6, 2));
         frame.show(ui, |ui| {
             ui.label(
                 egui::RichText::new(&tag.text)

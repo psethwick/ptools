@@ -54,30 +54,30 @@ pub fn dark_visuals() -> Visuals {
     v.widgets.noninteractive.bg_fill = DARK_SURFACE;
     v.widgets.noninteractive.weak_bg_fill = DARK_SURFACE;
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, DARK_SECONDARY_TEXT);
-    v.widgets.noninteractive.rounding = Rounding::same(6.0);
+    v.widgets.noninteractive.corner_radius = Rounding::same(6);
 
     // Inactive widget (buttons, text inputs at rest)
     v.widgets.inactive.bg_fill = DARK_SURFACE;
     v.widgets.inactive.weak_bg_fill = DARK_SURFACE;
     v.widgets.inactive.fg_stroke = Stroke::new(1.0, DARK_PRIMARY_TEXT);
-    v.widgets.inactive.rounding = Rounding::same(6.0);
+    v.widgets.inactive.corner_radius = Rounding::same(6);
 
     // Hovered widget
     v.widgets.hovered.bg_fill = DARK_SELECTION;
     v.widgets.hovered.weak_bg_fill = DARK_SELECTION;
     v.widgets.hovered.fg_stroke = Stroke::new(1.5, DARK_PRIMARY_TEXT);
-    v.widgets.hovered.rounding = Rounding::same(6.0);
+    v.widgets.hovered.corner_radius = Rounding::same(6);
 
     // Active / pressed widget
     v.widgets.active.bg_fill = DARK_ACCENT;
     v.widgets.active.weak_bg_fill = DARK_ACCENT;
     v.widgets.active.fg_stroke = Stroke::new(1.5, DARK_PRIMARY_TEXT);
-    v.widgets.active.rounding = Rounding::same(6.0);
+    v.widgets.active.corner_radius = Rounding::same(6);
 
     // Open (e.g. expanded combo-box)
     v.widgets.open.bg_fill = DARK_SELECTION;
     v.widgets.open.fg_stroke = Stroke::new(1.0, DARK_PRIMARY_TEXT);
-    v.widgets.open.rounding = Rounding::same(6.0);
+    v.widgets.open.corner_radius = Rounding::same(6);
 
     // Selection highlight (text selection, list items)
     v.selection.bg_fill = DARK_SELECTION;
@@ -105,30 +105,30 @@ pub fn light_visuals() -> Visuals {
     v.widgets.noninteractive.bg_fill = LIGHT_SURFACE;
     v.widgets.noninteractive.weak_bg_fill = LIGHT_SURFACE;
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, LIGHT_SECONDARY_TEXT);
-    v.widgets.noninteractive.rounding = Rounding::same(6.0);
+    v.widgets.noninteractive.corner_radius = Rounding::same(6);
 
     // Inactive widget
     v.widgets.inactive.bg_fill = LIGHT_SURFACE;
     v.widgets.inactive.weak_bg_fill = LIGHT_SURFACE;
     v.widgets.inactive.fg_stroke = Stroke::new(1.0, LIGHT_PRIMARY_TEXT);
-    v.widgets.inactive.rounding = Rounding::same(6.0);
+    v.widgets.inactive.corner_radius = Rounding::same(6);
 
     // Hovered widget
     v.widgets.hovered.bg_fill = LIGHT_SELECTION;
     v.widgets.hovered.weak_bg_fill = LIGHT_SELECTION;
     v.widgets.hovered.fg_stroke = Stroke::new(1.5, LIGHT_PRIMARY_TEXT);
-    v.widgets.hovered.rounding = Rounding::same(6.0);
+    v.widgets.hovered.corner_radius = Rounding::same(6);
 
     // Active / pressed widget
     v.widgets.active.bg_fill = LIGHT_ACCENT;
     v.widgets.active.weak_bg_fill = LIGHT_ACCENT;
     v.widgets.active.fg_stroke = Stroke::new(1.5, LIGHT_PRIMARY_TEXT);
-    v.widgets.active.rounding = Rounding::same(6.0);
+    v.widgets.active.corner_radius = Rounding::same(6);
 
     // Open
     v.widgets.open.bg_fill = LIGHT_SELECTION;
     v.widgets.open.fg_stroke = Stroke::new(1.0, LIGHT_PRIMARY_TEXT);
-    v.widgets.open.rounding = Rounding::same(6.0);
+    v.widgets.open.corner_radius = Rounding::same(6);
 
     // Selection highlight
     v.selection.bg_fill = LIGHT_SELECTION;

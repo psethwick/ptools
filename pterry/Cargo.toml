@@ -2,12 +2,12 @@
 name = "pterry"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.92"
 
 [dependencies]
-egui = "0.29"
-egui-winit = "0.29"
-eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] } # specify glow explicitly
+egui = "0.34"
+egui-winit = "0.34"
+eframe = { version = "0.34", default-features = false, features = ["default_fonts", "glow"] } # specify glow explicitly
 rquickjs = { version = "0.6", features = ["full", "macro", "parallel"] }
 window-vibrancy = "0.5"
 crossbeam-channel = "0.5"
