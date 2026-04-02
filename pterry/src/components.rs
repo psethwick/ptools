@@ -157,16 +157,16 @@ impl ActionPanel {
 
         let _area = egui::Area::new(egui::Id::new("action_panel"))
             .fixed_pos(egui::pos2(
-                ui.ctx().screen_rect().center().x - 200.0,
-                ui.ctx().screen_rect().center().y - 150.0,
+                ui.ctx().content_rect().center().x - 200.0,
+                ui.ctx().content_rect().center().y - 150.0,
             ))
             .interactable(true)
             .order(egui::Order::Foreground)
             .show(ui.ctx(), |ui| {
-                let frame = egui::Frame::none()
+                let frame = egui::Frame::new()
                     .fill(egui::Color32::from_gray(30))
                     .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(60)))
-                    .rounding(8.0)
+                    .corner_radius(8.0)
                     .inner_margin(egui::Margin::same(8));
 
                 frame.show(ui, |ui| {
@@ -1569,7 +1569,7 @@ impl ToastManager {
         // Request continuous repaints while toasts are animating.
         ctx.request_repaint();
 
-        let screen = ctx.screen_rect();
+        let screen = ctx.content_rect();
         let mut y_offset = screen.max.y - 16.0;
 
         for toast in self.toasts.iter().rev() {
@@ -1623,10 +1623,10 @@ pub struct Detail;
 impl Detail {
     /// Render the detail panel with optional structured metadata rows.
     pub fn ui(ui: &mut Ui, title: &str, content: &str, metadata: &[DetailMetadataRow]) {
-        let frame = egui::Frame::none()
+        let frame = egui::Frame::new()
             .fill(ui.visuals().faint_bg_color)
             .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(50)))
-            .rounding(6.0)
+            .corner_radius(6.0)
             .inner_margin(egui::Margin::same(12));
 
         frame.show(ui, |ui| {
@@ -1714,9 +1714,9 @@ impl Detail {
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(egui::Color32::from_rgb(60, 100, 160));
-        let frame = egui::Frame::none()
+        let frame = egui::Frame::new()
             .fill(color)
-            .rounding(4.0)
+            .corner_radius(4.0)
             .inner_margin(egui::Margin::symmetric(6, 2));
         frame.show(ui, |ui| {
             ui.label(

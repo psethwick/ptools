@@ -369,9 +369,7 @@ impl FormFieldDef {
 /// return the `FormFieldDef` list together with any existing values from disk.
 ///
 /// Returns `None` when the extension has no `extension.json` or no preferences.
-fn load_ext_pref_form(
-    ext_name: &str,
-) -> Option<(Vec<FormFieldDef>, HashMap<String, String>)> {
+fn load_ext_pref_form(ext_name: &str) -> Option<(Vec<FormFieldDef>, HashMap<String, String>)> {
     use crate::extension_trait::{ExtensionMetadata, PreferenceDropdownItem};
 
     // Locate the extension.json for this extension.
@@ -379,21 +377,19 @@ fn load_ext_pref_form(
     let user_dir = home_dir.join(".pterry").join("extensions");
     let dev_dir = std::path::PathBuf::from("extensions");
 
-    let json_path = [&user_dir, &dev_dir]
-        .iter()
-        .find_map(|base| {
-            // Package-style: <base>/<name>/extension.json
-            let pkg = base.join(ext_name).join("extension.json");
-            if pkg.exists() {
-                return Some(pkg);
-            }
-            // Sidecar: <base>/<name>.json (next to <name>.js/.ts)
-            let sidecar = base.join(format!("{ext_name}.json"));
-            if sidecar.exists() {
-                return Some(sidecar);
-            }
-            None
-        })?;
+    let json_path = [&user_dir, &dev_dir].iter().find_map(|base| {
+        // Package-style: <base>/<name>/extension.json
+        let pkg = base.join(ext_name).join("extension.json");
+        if pkg.exists() {
+            return Some(pkg);
+        }
+        // Sidecar: <base>/<name>.json (next to <name>.js/.ts)
+        let sidecar = base.join(format!("{ext_name}.json"));
+        if sidecar.exists() {
+            return Some(sidecar);
+        }
+        None
+    })?;
 
     let content = std::fs::read_to_string(&json_path).ok()?;
     let meta: ExtensionMetadata = serde_json::from_str(&content).ok()?;
@@ -408,11 +404,10 @@ fn load_ext_pref_form(
         .join("extension-data")
         .join(ext_name)
         .join("preferences.json");
-    let existing: HashMap<String, String> =
-        std::fs::read_to_string(&prefs_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+    let existing: HashMap<String, String> = std::fs::read_to_string(&prefs_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
 
     // Convert PreferenceSpec → FormFieldDef.
     let fields: Vec<FormFieldDef> = meta
@@ -432,14 +427,12 @@ fn load_ext_pref_form(
                 .unwrap_or_default();
 
             match p.type_.as_str() {
-                "textfield" | "password" | "file" | "directory" => {
-                    Some(FormFieldDef::TextField {
-                        id,
-                        title,
-                        placeholder: None,
-                        default_value: default_str,
-                    })
-                }
+                "textfield" | "password" | "file" | "directory" => Some(FormFieldDef::TextField {
+                    id,
+                    title,
+                    placeholder: None,
+                    default_value: default_str,
+                }),
                 "checkbox" => Some(FormFieldDef::Checkbox {
                     label: title.clone(),
                     id,
@@ -1095,9 +1088,12 @@ impl App {
             let matched = item.extra_actions.iter().find_map(|ea| {
                 let label = ea.shortcut.as_deref()?;
                 let (mods, key) = parse_shortcut_label(label)?;
-                let pressed =
-                    ctx.input(|i| i.modifiers == mods && i.key_pressed(key));
-                if pressed { Some(ea.action.clone()) } else { None }
+                let pressed = ctx.input(|i| i.modifiers == mods && i.key_pressed(key));
+                if pressed {
+                    Some(ea.action.clone())
+                } else {
+                    None
+                }
             });
             if let Some(action) = matched {
                 self.execute_action(action, ctx);
@@ -1124,10 +1120,16 @@ impl App {
             }
             EscapeOutcome::ReturnToMainList => {
                 // Pop the main-list sentinel frame and restore global search state.
-                let frame = self.ui.nav_stack.pop().expect("ReturnToMainList implies a frame");
+                let frame = self
+                    .ui
+                    .nav_stack
+                    .pop()
+                    .expect("ReturnToMainList implies a frame");
                 self.ui.current_mode = None;
                 self.ui.search_query = frame.search_query;
-                self.ui.list.restore_snapshot(frame.items, frame.selected_index);
+                self.ui
+                    .list
+                    .restore_snapshot(frame.items, frame.selected_index);
                 self.ui.search_focused = true;
             }
             EscapeOutcome::ClearSearch => {
@@ -1491,15 +1493,14 @@ fn reclaim_focus_on_text_input(
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, _ui: &mut egui::Ui, _frame: &mut eframe::Frame) {}
-
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         self.handle_messages();
-        self.handle_input(ctx);
+        self.handle_input(&ctx);
 
         // Handle hotkey events (Unix socket fallback + OS global hotkeys).
         if let Some(event) = self.hotkey.hotkey_manager.try_receive() {
-            self.handle_hotkey_event(event, ctx);
+            self.handle_hotkey_event(event, &ctx);
         }
 
         // Handle clipboard events
@@ -1561,13 +1562,13 @@ impl eframe::App for App {
         // fire the async action after the closure.
         let mut pending_form_submit: Option<(String, String)> = None; // (ext_name, json)
         // Render toast notifications on top of everything.
-        self.ui.toast_manager.ui(ctx);
+        self.ui.toast_manager.ui(&ctx);
 
         // Use the theme's panel fill (set by theme::visuals_for_theme).
-        let panel_bg = ctx.style().visuals.panel_fill;
+        let panel_bg = ctx.global_style().visuals.panel_fill;
         egui::CentralPanel::default()
-            .frame(egui::Frame::central_panel(&ctx.style()).fill(panel_bg))
-            .show(ctx, |ui| {
+            .frame(egui::Frame::central_panel(&ctx.global_style()).fill(panel_bg))
+            .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
                     // When a form is active it takes over the full panel — the search bar,
                     // mode badge, and breadcrumb are hidden so the form has all the space.
@@ -1601,9 +1602,9 @@ impl eframe::App for App {
                                 let label = egui::RichText::new(format!(" {mode_name} "))
                                     .color(egui::Color32::from_rgb(180, 220, 255))
                                     .size(11.0);
-                                egui::Frame::none()
+                                egui::Frame::new()
                                     .fill(egui::Color32::from_rgb(40, 60, 100))
-                                    .rounding(4.0)
+                                    .corner_radius(4.0)
                                     .inner_margin(egui::Margin::symmetric(4, 2))
                                     .show(ui, |ui| {
                                         ui.label(label);
@@ -1659,10 +1660,10 @@ impl eframe::App for App {
 
                     if let Some(ref mut fs) = self.ui.form_state {
                         // ── Form rendering ────────────────────────────────────
-                        let frame = egui::Frame::none()
+                        let frame = egui::Frame::new()
                             .fill(ui.visuals().faint_bg_color)
                             .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(50)))
-                            .rounding(6.0)
+                            .corner_radius(6.0)
                             .inner_margin(egui::Margin::same(12));
 
                         frame.show(ui, |ui| {
@@ -1793,17 +1794,16 @@ impl eframe::App for App {
                 let values: HashMap<String, String> =
                     serde_json::from_str(&json).unwrap_or_default();
                 match crate::core_extensions::settings_extension::save_extension_prefs(
-                    target_ext,
-                    &values,
+                    target_ext, &values,
                 ) {
                     Ok(()) => self.ui.toast_manager.push(
                         format!("Preferences saved for '{target_ext}'"),
                         ToastKind::Success,
                     ),
-                    Err(e) => self.ui.toast_manager.push(
-                        format!("Failed to save preferences: {e}"),
-                        ToastKind::Error,
-                    ),
+                    Err(e) => self
+                        .ui
+                        .toast_manager
+                        .push(format!("Failed to save preferences: {e}"), ToastKind::Error),
                 }
             } else {
                 let action = format!("form-submit::{json}");
@@ -1828,7 +1828,7 @@ impl eframe::App for App {
         if let Some(action) = pending_click_action
             && !action.is_empty()
         {
-            self.execute_action(action, ctx);
+            self.execute_action(action, &ctx);
         }
 
         // Drain any action triggered via the ActionPanel (keyboard or click).
@@ -1836,7 +1836,7 @@ impl eframe::App for App {
             && !action.is_empty()
         {
             self.ui.action_panel.close();
-            self.execute_action(action, ctx);
+            self.execute_action(action, &ctx);
         }
     }
 }
@@ -2601,11 +2601,7 @@ mod tests {
     #[test]
     fn extension_arg_with_binary_name_prefix() {
         // Typical argv includes the binary name at index 0.
-        let result = parse_extension_arg(&args(&[
-            "pterry",
-            "--extension",
-            "clipboard-history",
-        ]));
+        let result = parse_extension_arg(&args(&["pterry", "--extension", "clipboard-history"]));
         assert_eq!(result.as_deref(), Some("clipboard-history"));
     }
 
