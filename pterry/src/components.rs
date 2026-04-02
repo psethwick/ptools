@@ -535,6 +535,7 @@ impl List {
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 0.0;
                         for (index, item) in items.iter().enumerate() {
                             if Self::is_section_header(item) {
                                 // Render a non-interactive dimmed section label.
@@ -792,18 +793,19 @@ impl List {
             .is_some_and(|s| (needs_image_load(s) || is_url_icon(s)) && texture_cache.contains_key(s));
         let row_height = if has_thumb || icon_is_image { 64.0 } else { 50.0 };
         let icon_col_width = if has_thumb || icon_is_image { 72.0 } else { 40.0 };
-
-        let background_color = if is_selected {
-            ui.visuals().selection.bg_fill
-        } else {
-            ui.visuals().extreme_bg_color
-        };
+        let background_color = ui.visuals().selection.bg_fill;
 
         let response =
             ui.allocate_response(Vec2::new(ui.available_width(), row_height), Sense::click());
         let rect = response.rect;
 
-        ui.painter().rect_filled(rect, 0.0, background_color);
+        // Content is laid out inside a 4px horizontal inset so nothing bleeds
+        // outside the rounded selection highlight.
+        let content_rect = rect.shrink2(egui::Vec2::new(8.0, 1.0));
+
+        if is_selected {
+            ui.painter().rect_filled(content_rect, 6.0, background_color);
+        }
 
         let text_color = ui.visuals().text_color();
 
@@ -833,7 +835,7 @@ impl List {
                 } else {
                     (thumb_area, thumb_area)
                 };
-                let center = Pos2::new(rect.min.x + 6.0 + thumb_area / 2.0, rect.center().y);
+                let center = Pos2::new(content_rect.min.x + 6.0 + thumb_area / 2.0, content_rect.center().y);
                 let thumb_rect = Rect::from_center_size(center, Vec2::new(tw, th));
                 ui.painter().image(
                     texture.id(),
@@ -846,7 +848,7 @@ impl List {
             // Only render as a glyph if it looks like an emoji/symbol (≤ 2 chars).
             // Longer strings are system icon theme names and cannot be painted as text.
             if icon.chars().count() <= 2 {
-                let icon_center = Pos2::new(rect.min.x + icon_col_width / 2.0, rect.center().y);
+                let icon_center = Pos2::new(content_rect.min.x + icon_col_width / 2.0, content_rect.center().y);
                 ui.painter().text(
                     icon_center,
                     Align2::CENTER_CENTER,
@@ -858,9 +860,9 @@ impl List {
         }
 
         // Title and subtitle
-        let text_x = rect.min.x + icon_col_width;
+        let text_x = content_rect.min.x + icon_col_width;
 
-        let title_pos = Pos2::new(text_x, rect.min.y + 8.0);
+        let title_pos = Pos2::new(text_x, content_rect.min.y + 8.0);
         ui.painter().text(
             title_pos,
             Align2::LEFT_TOP,
@@ -870,7 +872,7 @@ impl List {
         );
 
         if let Some(subtitle) = &item.subtitle {
-            let subtitle_pos = Pos2::new(text_x, rect.center().y);
+            let subtitle_pos = Pos2::new(text_x, content_rect.center().y);
             ui.painter().text(
                 subtitle_pos,
                 Align2::LEFT_TOP,
@@ -884,14 +886,14 @@ impl List {
         if !item.accessories.is_empty() {
             let acc_color = ui.visuals().weak_text_color();
             let acc_font = FontId::monospace(11.0);
-            let right_edge = rect.max.x - 8.0;
+            let right_edge = content_rect.max.x - 8.0;
             let mut cursor_x = right_edge;
             for label in item.accessories.iter().rev() {
                 let text_shape =
                     ui.fonts_mut(|f| f.layout_no_wrap(label.clone(), acc_font.clone(), acc_color));
                 cursor_x -= text_shape.size().x;
                 ui.painter().galley(
-                    Pos2::new(cursor_x, rect.center().y - text_shape.size().y / 2.0),
+                    Pos2::new(cursor_x, content_rect.center().y - text_shape.size().y / 2.0),
                     text_shape,
                     acc_color,
                 );
