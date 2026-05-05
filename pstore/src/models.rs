@@ -115,6 +115,7 @@ pub struct Release {
     pub deployed_at: Option<DateTime<Utc>>,
     pub status: Option<String>,
     pub url: Option<String>,
+    pub pipeline: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -150,8 +151,8 @@ impl Release {
         E: Executor<'a, Database = Sqlite>,
     {
         sqlx::query(
-            "INSERT OR REPLACE INTO release (remote_id, project, release_id, name, environment, started_at, deployed_at, status, url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO release (remote_id, project, release_id, name, environment, started_at, deployed_at, status, url, pipeline)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(self.remote_id)
         .bind(&self.project)
@@ -162,6 +163,7 @@ impl Release {
         .bind(self.deployed_at)
         .bind(&self.status)
         .bind(&self.url)
+        .bind(&self.pipeline)
         .execute(executor)
         .await?;
 

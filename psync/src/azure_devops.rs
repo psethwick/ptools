@@ -74,6 +74,14 @@ struct AzureRelease {
     created_on: Option<DateTime<Utc>>,
     #[serde(rename = "environments")]
     environments: Option<Vec<AzureReleaseEnvironment>>,
+    #[serde(rename = "releaseDefinition")]
+    release_definition: Option<AzureReleaseDefinition>,
+}
+
+#[derive(Deserialize, Debug)]
+struct AzureReleaseDefinition {
+    pub id: i32,
+    pub name: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -158,6 +166,7 @@ async fn fetch_project_releases(
                 deployed_at: None,
                 status: Some(map_azure_status(&azure_release.status)),
                 url: None,
+                pipeline: azure_release.release_definition.as_ref().map(|d| d.name.clone()),
             });
         } else {
             for env in environments {
@@ -172,6 +181,7 @@ async fn fetch_project_releases(
                     deployed_at: env.deployed_on,
                     status: Some(map_azure_status(&env.status)),
                     url: None,
+                    pipeline: azure_release.release_definition.as_ref().map(|d| d.name.clone()),
                 });
             }
         }
