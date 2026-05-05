@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use pstore::db::Pool;
-use pstore::models::{Data, Person, Work};
+use pstore::models::{Data, Person, Release, Work};
 use pstore::queries::get_max_modified;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,182 @@ struct AzureDevOpsWorkItem {
 #[derive(Deserialize, Debug)]
 struct AzureDevOpsBatchResponse {
     pub value: Vec<AzureDevOpsWorkItem>,
+}
+
+// ============== Release Sync Types ==============
+
+
+#[derive(Deserialize, Debug)]
+struct AzureRelease {
+    id: i32,
+    name: String,
+    status: String,
+    #[serde(rename = "createdOn")]
+    created_on: Option<DateTime<Utc>>,
+    #[serde(rename = "environments")]
+    environments: Option<Vec<AzureReleaseEnvironment>>,
+}
+
+#[derive(Deserialize, Debug)]
+struct AzureReleaseEnvironment {
+    id: i32,
+    name: String,
+    status: String,
+    #[serde(rename = "deployedOn")]
+    deployed_on: Option<DateTime<Utc>>,
+}
+
+fn map_azure_status(status: &str) -> String {
+    match status {
+        "notStarted" => "pending",
+        "inProgress" => "in_progress",
+        "succeeded" => "succeeded",
+        "failed" => "failed",
+        "cancelled" => "cancelled",
+        _ => status,
+    }
+    .to_string()
+}
+
+async fn fetch_project_releases(
+    client: &Client,
+    org: &str,
+    pat: &str,
+    remote_id: i64,
+    project_name: &str,
+) -> Vec<Release> {
+    let releases_url = format!(
+        "https://vsrm.dev.azure.com/{}/{}/_apis/release/releases?api-version=7.1",
+        org, project_name
+    );
+
+    let response = match client.get(&releases_url).bearer_auth(pat).send().await {
+        Ok(resp) => resp,
+        Err(e) => {
+            eprintln!("Warning: Could not fetch releases for project {}: {}", project_name, e);
+            return Vec::new();
+        }
+    };
+
+    if !response.status().is_success() {
+        eprintln!(
+            "Warning: Release API failed for project {}: {}",
+            project_name,
+            response.status()
+        );
+        return Vec::new();
+    }
+
+    let response: Value = match response.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "Warning: Could not parse releases for project {}: {}",
+                project_name, e
+            );
+            return Vec::new();
+        }
+    };
+
+    let azure_releases: Vec<AzureRelease> = response["value"]
+        .as_array()
+        .map(|arr| serde_json::from_value(Value::Array(arr.clone())).unwrap_or_default())
+        .unwrap_or_default();
+
+    let mut releases = Vec::new();
+    for azure_release in azure_releases {
+        let environments = azure_release.environments.unwrap_or_default();
+
+        if environments.is_empty() {
+            releases.push(Release {
+                id: 0,
+                remote_id,
+                project: project_name.to_string(),
+                release_id: azure_release.id.to_string(),
+                name: azure_release.name.clone(),
+                environment: None,
+                started_at: azure_release.created_on,
+                deployed_at: None,
+                status: Some(map_azure_status(&azure_release.status)),
+                url: None,
+            });
+        } else {
+            for env in environments {
+                releases.push(Release {
+                    id: 0,
+                    remote_id,
+                    project: project_name.to_string(),
+                    release_id: format!("{}-{}", azure_release.id, env.id),
+                    name: azure_release.name.clone(),
+                    environment: Some(env.name),
+                    started_at: azure_release.created_on,
+                    deployed_at: env.deployed_on,
+                    status: Some(map_azure_status(&env.status)),
+                    url: None,
+                });
+            }
+        }
+    }
+
+    releases
+}
+
+async fn fetch_azure_releases(
+    client: &Client,
+    org: &str,
+    pat: &str,
+    remote_id: i64,
+) -> Result<Vec<Release>> {
+    // 1. Fetch all projects
+    let projects_url = format!(
+        "https://dev.azure.com/{}/_apis/projects?api-version=7.1",
+        org
+    );
+
+    let projects_response = client
+        .get(&projects_url)
+        .bearer_auth(pat)
+        .send()
+        .await?;
+
+    if !projects_response.status().is_success() {
+        return Err(anyhow!(
+            "Failed to fetch projects for releases: {}",
+            projects_response.status()
+        ));
+    }
+
+    let projects_response: Value = projects_response.json().await?;
+    let empty_projects = Vec::new();
+    let projects: Vec<_> = projects_response["value"]
+        .as_array()
+        .unwrap_or(&empty_projects)
+        .iter()
+        .filter_map(|p| p["name"].as_str().map(|s| s.to_string()))
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // 2. Fetch releases for all projects in parallel
+    let mut set = JoinSet::new();
+    for project_name in projects {
+        let client = client.clone();
+        let org = org.to_string();
+        let pat = pat.to_string();
+
+        set.spawn(async move {
+            fetch_project_releases(&client, &org, &pat, remote_id, &project_name).await
+        });
+    }
+
+    let mut all_releases = Vec::new();
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(releases) => all_releases.extend(releases),
+            Err(e) => eprintln!("Warning: Release task failed: {}", e),
+        }
+    }
+
+    Ok(all_releases)
 }
 
 async fn process_project(
@@ -230,7 +406,7 @@ async fn process_project(
                 .unique_by(|p| p.id.clone())
                 .collect();
 
-            Ok::<Data, Error>(Data { work, people })
+            Ok::<Data, Error>(Data { work, people, releases: Vec::new() })
         });
     }
 
@@ -314,6 +490,10 @@ impl RemoteSync for AzureDevops {
                 Err(e) => eprintln!("Task join error: {e}"),
             }
         }
+
+        // Fetch releases
+        let azure_releases = fetch_azure_releases(client, &self.org, &self.pat, remote_id).await?;
+        data.releases = azure_releases;
 
         Ok(data)
     }

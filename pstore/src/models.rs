@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Database, Decode, Encode, FromRow, Type};
+use sqlx::{Database, Decode, Encode, Executor, FromRow, Sqlite, Type};
 use std::fmt::Display;
 
 #[derive(PartialEq, Eq, Clone, Debug, Copy, Serialize, Deserialize)]
@@ -103,10 +103,25 @@ pub struct Person {
     pub name: String,
 }
 
+#[derive(FromRow, Debug, Serialize, Deserialize)]
+pub struct Release {
+    pub id: i64,
+    pub remote_id: i64,
+    pub project: String,
+    pub release_id: String,
+    pub name: String,
+    pub environment: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub deployed_at: Option<DateTime<Utc>>,
+    pub status: Option<String>,
+    pub url: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 pub struct Data {
     pub work: Vec<Work>,
     pub people: Vec<Person>,
+    pub releases: Vec<Release>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -127,6 +142,31 @@ pub struct TimesheetRow {
     #[sqlx(try_from = "i32")]
     pub kind: Kind,
     pub name: String,
+}
+
+impl Release {
+    pub async fn save<'a, E>(&self, executor: E) -> Result<(), sqlx::Error>
+    where
+        E: Executor<'a, Database = Sqlite>,
+    {
+        sqlx::query(
+            "INSERT OR REPLACE INTO release (remote_id, project, release_id, name, environment, started_at, deployed_at, status, url)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(self.remote_id)
+        .bind(&self.project)
+        .bind(&self.release_id)
+        .bind(&self.name)
+        .bind(&self.environment)
+        .bind(self.started_at)
+        .bind(self.deployed_at)
+        .bind(&self.status)
+        .bind(&self.url)
+        .execute(executor)
+        .await?;
+
+        Ok(())
+    }
 }
 
 pub fn decimal_hours_to_jira(hours: f64) -> String {

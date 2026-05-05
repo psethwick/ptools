@@ -334,6 +334,7 @@ impl RemoteSync for Jira {
             .unique_by(|p| p.id.clone())
             .collect();
 
+        // Jira doesn't support releases, so releases stays empty
         Ok(data)
     }
 }

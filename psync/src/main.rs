@@ -1,41 +1,42 @@
 use anyhow::Result;
-use clap::{self, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use pstore::models::Kind;
-use pstore::queries::{add_remote, get_remotes, get_work, remove_remote};
+use pstore::queries::{add_remote, get_remotes, get_work, get_releases, remove_remote};
 use tokio::task::JoinSet;
 
 #[derive(Debug, Parser)]
 #[command(name = "psync")]
 struct Cli {
     #[command(subcommand)]
-    command: Root,
+    command: Command,
 }
 
 #[derive(Debug, Subcommand)]
-enum Root {
-    #[command(subcommand)]
-    Work(WorkCommand),
-    #[command(subcommand)]
-    Time(TimeCommand),
-}
-
-#[derive(Debug, Subcommand)]
-enum WorkCommand {
-    #[command(subcommand)]
-    Add(Add),
-    #[command(subcommand)]
-    Delete(Delete),
+enum Command {
+    /// Sync work items AND releases from all remotes
     Pull,
-    List,
-}
-
-#[derive(Debug, Subcommand)]
-enum TimeCommand {
+    /// Push time entries to all remotes
     Push,
+    #[command(subcommand)]
+    List(ListCommand),
+    /// Add a remote
+    #[command(subcommand)]
+    Add(AddCommand),
+    /// Delete a remote
+    #[command(subcommand)]
+    Delete(DeleteCommand),
 }
 
 #[derive(Debug, Subcommand)]
-enum Add {
+enum ListCommand {
+    /// List stored work items (default)
+    Work,
+    /// List stored releases
+    Releases,
+}
+
+#[derive(Debug, Subcommand)]
+enum AddCommand {
     AzureDevops {
         org: String,
         pat: String,
@@ -48,7 +49,7 @@ enum Add {
 }
 
 #[derive(Debug, Subcommand)]
-enum Delete {
+enum DeleteCommand {
     AzureDevops { org: String },
     Jira { org: String },
 }
@@ -60,85 +61,98 @@ async fn main() -> Result<()> {
     let pool = pstore::db::init().await?;
 
     match args.command {
-        Root::Work(w) => match w {
-            WorkCommand::Add(a) => match a {
-                Add::AzureDevops { org, pat } => {
-                    add_remote(&pool, Kind::AzureDevops, &org, pat).await?;
-                    println!("Added remote: {}-{org}", Kind::AzureDevops);
-                }
-                Add::Jira {
-                    org,
-                    user,
-                    password,
-                } => {
-                    let credentials = serde_json::json!({
-                        "user": user,
-                        "password": password
-                    });
-                    add_remote(&pool, Kind::Jira, &org, credentials.to_string()).await?;
-                    println!("Added remote: {}-{org}", Kind::Jira);
-                }
-            },
-            WorkCommand::Delete(d) => match d {
-                Delete::AzureDevops { org } => {
-                    let remotes = get_remotes(&pool).await?;
-                    let remote_to_remove = remotes
-                        .iter()
-                        .find(|s| s.kind == Kind::AzureDevops && s.name == org)
-                        .unwrap();
-                    remove_remote(&pool, remote_to_remove).await?;
-                }
-                Delete::Jira { .. } => todo!(),
-            },
-            WorkCommand::Pull => {
-                let client = reqwest::Client::new();
-                let remotes = get_remotes(&pool).await?;
-                let mut set = JoinSet::new();
+        Command::Pull => {
+            let client = reqwest::Client::new();
+            let remotes = get_remotes(&pool).await?;
+            let mut set = JoinSet::new();
 
-                for remote in remotes {
-                    let client = client.clone();
-                    let pool = pool.clone();
-                    set.spawn(async move {
-                        if let Err(e) = psync::pull_remote_work(&remote, &client, &pool).await {
-                            eprintln!("Sync failed: {e}");
-                        }
-                    });
-                }
-
-                while let Some(res) = set.join_next().await {
-                    if let Err(e) = res {
-                        eprintln!("Task execution failed: {e}");
+            for remote in remotes {
+                let client = client.clone();
+                let pool = pool.clone();
+                set.spawn(async move {
+                    if let Err(e) = psync::pull(&remote, &client, &pool).await {
+                        eprintln!("Sync failed: {e}");
                     }
+                });
+            }
+
+            while let Some(res) = set.join_next().await {
+                if let Err(e) = res {
+                    eprintln!("Task execution failed: {e}");
                 }
             }
-            WorkCommand::List => {
+        }
+        Command::Push => {
+            let client = reqwest::Client::new();
+            let remotes = get_remotes(&pool).await?;
+            let mut set = JoinSet::new();
+
+            for remote in remotes {
+                let client = client.clone();
+                let pool = pool.clone();
+                set.spawn(async move {
+                    if let Err(e) = psync::push_time(&remote, &client, &pool).await {
+                        eprintln!("Push failed for {}: {e}", remote.name);
+                    }
+                });
+            }
+
+            while let Some(res) = set.join_next().await {
+                if let Err(e) = res {
+                    eprintln!("Task execution failed: {e}");
+                }
+            }
+        }
+        Command::List(list_cmd) => match list_cmd {
+            ListCommand::Work => {
                 let work_items = get_work(&pool).await?;
                 for item in work_items {
                     println!("{item:#?}");
                 }
             }
+            ListCommand::Releases => {
+                let releases = get_releases(&pool).await?;
+                for release in releases {
+                    println!("{release:#?}");
+                }
+            }
         },
-        Root::Time(time) => match time {
-            TimeCommand::Push => {
-                let client = reqwest::Client::new();
+        Command::Add(add_cmd) => match add_cmd {
+            AddCommand::AzureDevops { org, pat } => {
+                add_remote(&pool, Kind::AzureDevops, &org, pat).await?;
+                println!("Added remote: {}-{org}", Kind::AzureDevops);
+            }
+            AddCommand::Jira {
+                org,
+                user,
+                password,
+            } => {
+                let credentials = serde_json::json!({
+                    "user": user,
+                    "password": password
+                });
+                add_remote(&pool, Kind::Jira, &org, credentials.to_string()).await?;
+                println!("Added remote: {}-{org}", Kind::Jira);
+            }
+        },
+        Command::Delete(delete_cmd) => match delete_cmd {
+            DeleteCommand::AzureDevops { org } => {
                 let remotes = get_remotes(&pool).await?;
-                let mut set = JoinSet::new();
-
-                for remote in remotes {
-                    let client = client.clone();
-                    let pool = pool.clone();
-                    set.spawn(async move {
-                        if let Err(e) = psync::push_time(&remote, &client, &pool).await {
-                            eprintln!("Push failed for {}: {e}", remote.name);
-                        }
-                    });
-                }
-
-                while let Some(res) = set.join_next().await {
-                    if let Err(e) = res {
-                        eprintln!("Task execution failed: {e}");
-                    }
-                }
+                let remote_to_remove = remotes
+                    .iter()
+                    .find(|s| s.kind == Kind::AzureDevops && s.name == org)
+                    .unwrap();
+                remove_remote(&pool, remote_to_remove).await?;
+                println!("Deleted remote: {}-{org}", Kind::AzureDevops);
+            }
+            DeleteCommand::Jira { org } => {
+                let remotes = get_remotes(&pool).await?;
+                let remote_to_remove = remotes
+                    .iter()
+                    .find(|s| s.kind == Kind::Jira && s.name == org)
+                    .unwrap();
+                remove_remote(&pool, remote_to_remove).await?;
+                println!("Deleted remote: {}-{org}", Kind::Jira);
             }
         },
     }

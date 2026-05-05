@@ -56,11 +56,10 @@ async fn report_range(
         let day = Day::new(s);
         if let Some(d) = day {
             print!("{}", d.report_str(client_filter));
-            if let Some(remote_name) = sync_to {
-                if let Err(e) = d.save_to_pstore(remote_name).await {
+            if let Some(remote_name) = sync_to
+                && let Err(e) = d.save_to_pstore(remote_name).await {
                     eprintln!("Save to pstore failed for date {s}: {e}\n");
                 }
-            }
             total_work += d.total_work(client_filter);
         }
         s += Duration::days(1);
@@ -108,11 +107,10 @@ async fn main() {
 
             if let Some(d) = day {
                 println!("{}", d.report_str(args.client.as_deref()));
-                if let Some(remote_name) = args.save_to.as_deref() {
-                    if let Err(e) = d.save_to_pstore(remote_name).await {
+                if let Some(remote_name) = args.save_to.as_deref()
+                    && let Err(e) = d.save_to_pstore(remote_name).await {
                         eprintln!("Save to pstore failed: {e}");
                     }
-                }
             } else {
                 println!("nothing to see here, boss");
             }

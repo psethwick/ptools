@@ -1,5 +1,5 @@
 use crate::SERVICE_NAME;
-use crate::models::{Kind, Person, Remote, Timesheet, TimesheetRow, Work};
+use crate::models::{Kind, Person, Remote, Release, Timesheet, TimesheetRow, Work};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use keyring::Entry;
@@ -114,6 +114,41 @@ pub async fn get_work(pool: &SqlitePool) -> Result<Vec<Work>> {
         .fetch_all(pool)
         .await?;
     Ok(work_items)
+}
+
+pub async fn get_releases(pool: &SqlitePool) -> Result<Vec<Release>> {
+    let releases = sqlx::query_as::<_, Release>("SELECT * FROM release")
+        .fetch_all(pool)
+        .await?;
+    Ok(releases)
+}
+
+pub async fn get_releases_by_project(
+    pool: &SqlitePool,
+    project: &str,
+    remote_id: Option<i64>,
+) -> Result<Vec<Release>> {
+    match remote_id {
+        Some(rid) => {
+            let releases = sqlx::query_as::<_, Release>(
+                "SELECT * FROM release WHERE project = ? AND remote_id = ?",
+            )
+            .bind(project)
+            .bind(rid)
+            .fetch_all(pool)
+            .await?;
+            Ok(releases)
+        }
+        None => {
+            let releases = sqlx::query_as::<_, Release>(
+                "SELECT * FROM release WHERE project = ?",
+            )
+            .bind(project)
+            .fetch_all(pool)
+            .await?;
+            Ok(releases)
+        }
+    }
 }
 
 impl Timesheet {

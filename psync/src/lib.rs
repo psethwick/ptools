@@ -13,7 +13,7 @@ use crate::azure_devops::AzureDevops;
 use crate::jira::Jira;
 use crate::remote::RemoteSync;
 
-pub async fn pull_remote_work(remote: &Remote, client: &Client, pool: &Pool) -> Result<(), Error> {
+pub async fn pull(remote: &Remote, client: &Client, pool: &Pool) -> Result<(), Error> {
     let data: Data = match remote.kind {
         Kind::AzureDevops => {
             get_password(remote)
@@ -51,6 +51,9 @@ pub async fn pull_remote_work(remote: &Remote, client: &Client, pool: &Pool) -> 
     }
     for person in data.people {
         person.save(&mut *tx).await?;
+    }
+    for release in data.releases {
+        release.save(&mut *tx).await?;
     }
     tx.commit().await?;
 
@@ -166,11 +169,10 @@ fn parse_jira_duration_to_seconds(duration: &str) -> i64 {
             if let Ok(n) = h.parse::<i64>() {
                 seconds += n * 3600;
             }
-        } else if let Some(m) = part.strip_suffix('m') {
-            if let Ok(n) = m.parse::<i64>() {
+        } else if let Some(m) = part.strip_suffix('m')
+            && let Ok(n) = m.parse::<i64>() {
                 seconds += n * 60;
             }
-        }
     }
     seconds
 }
