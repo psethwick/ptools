@@ -477,65 +477,6 @@ fn load_ext_pref_form(ext_name: &str) -> Option<(Vec<FormFieldDef>, HashMap<Stri
     Some((fields, values))
 }
 
-/// Parse the JSON form-definition string emitted by the JS shim (`_extractFormDef`)
-/// into a typed list of field descriptors.
-///
-/// Returns `None` if `json` is not valid JSON or has no `"fields"` array.
-fn parse_form_def(json: &str) -> Option<Vec<FormFieldDef>> {
-    let v: serde_json::Value = serde_json::from_str(json).ok()?;
-    let raw_fields = v["fields"].as_array()?;
-    let mut fields = Vec::new();
-    for field in raw_fields {
-        let id = field["id"].as_str().unwrap_or("").to_string();
-        let title = field["title"].as_str().unwrap_or("").to_string();
-        match field["type"].as_str() {
-            Some("textfield") => {
-                fields.push(FormFieldDef::TextField {
-                    id,
-                    title,
-                    placeholder: field["placeholder"].as_str().map(str::to_string),
-                    default_value: field["defaultValue"].as_str().unwrap_or("").to_string(),
-                });
-            }
-            Some("checkbox") => {
-                fields.push(FormFieldDef::Checkbox {
-                    id,
-                    title,
-                    label: field["label"].as_str().unwrap_or("").to_string(),
-                    default_value: field["defaultValue"].as_bool().unwrap_or(false),
-                });
-            }
-            Some("dropdown") => {
-                let options: Vec<DropdownOption> = field["options"]
-                    .as_array()
-                    .map(|arr| {
-                        arr.iter()
-                            .map(|opt| DropdownOption {
-                                value: opt["value"].as_str().unwrap_or("").to_string(),
-                                title: opt["title"].as_str().unwrap_or("").to_string(),
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let default_value = field["defaultValue"]
-                    .as_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|| {
-                        options.first().map(|o| o.value.clone()).unwrap_or_default()
-                    });
-                fields.push(FormFieldDef::Dropdown {
-                    id,
-                    title,
-                    options,
-                    default_value,
-                });
-            }
-            _ => {} // unknown field types are silently skipped
-        }
-    }
-    Some(fields)
-}
-
 struct FormState {
     /// Typed field definitions parsed from the JS shim's form sentinel.
     fields: Vec<FormFieldDef>,
@@ -663,7 +604,7 @@ impl App {
             action_panel: ActionPanel::new(),
             window_visible: true, // Start visible for testing
             toast_manager: ToastManager::new(),
-            current_mode: initial_mode,
+            current_mode: initial_mode.clone(),
             form_state: None,
             nav_stack: vec![],
         };
@@ -701,20 +642,31 @@ impl App {
         // Start clipboard monitoring
         app.ext.clipboard_manager.start_monitoring();
 
-        // Trigger an initial empty search to populate the list
+        // Trigger initial search after a brief delay to let built-in extensions load.
+        // This respects current_mode (mode pre-activation via --extension flag).
+        let mode = app.ui.current_mode.clone();
         let manager = app.ext.extension_manager.clone();
         let runtime = app.ext.runtime.clone();
         let ctx_search = ctx.clone();
+        let seq_counter = app.ext.search_seq.clone();
         runtime.spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-            println!("Triggering initial search...");
-            let query = String::new();
-            let results = manager.broadcast_search(query.clone()).await;
-            let all_items: Vec<_> = results.into_values().flatten().collect();
-            if !all_items.is_empty() {
-                let _ = manager
-                    .get_sender()
-                    .send(ExtensionMessage::SearchResults(query, all_items));
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            let my_seq = seq_counter.fetch_add(1, Ordering::Release) + 1;
+            if let Some(ext_name) = mode {
+                // Mode pre-activated: search only that extension
+                if let Ok(items) = manager.handle_search(&ext_name, String::new()).await
+                    && seq_counter.load(Ordering::Acquire) == my_seq {
+                        let _ = manager.get_sender()
+                            .send(ExtensionMessage::SearchResults(ext_name, items));
+                    }
+            } else {
+                // No mode: broadcast to all auto_load extensions
+                let results = manager.broadcast_search(String::new()).await;
+                let all_items: Vec<_> = results.into_values().flatten().collect();
+                if seq_counter.load(Ordering::Acquire) == my_seq {
+                    let _ = manager.get_sender()
+                        .send(ExtensionMessage::SearchResults(String::new(), all_items));
+                }
             }
             ctx_search.request_repaint();
         });
@@ -849,46 +801,13 @@ impl App {
             match message {
                 ExtensionMessage::SearchResults(query, items) => {
                     if query == self.ui.search_query {
-                        println!("Received {} results for query '{}'", items.len(), query);
-
-                        // Detect the form sentinel: a single item with id "::form::"
-                        // emitted by a JS extension that renders a <Form> as its root.
-                        // Only trigger in mode (single-extension search) to avoid false
-                        // positives from broadcast results mixing with other extensions.
-                        if self.ui.current_mode.is_some()
-                            && items.len() == 1
-                            && items[0].id.as_deref() == Some("::form::")
-                        {
-                            if let Some(ref detail) = items[0].detail
-                                && let Some(fields) = parse_form_def(detail)
-                            {
-                                let ext_name = self.ui.current_mode.clone().unwrap_or_default();
-                                let values = fields
-                                    .iter()
-                                    .map(|f| (f.id().to_string(), f.default_value_str()))
-                                    .collect();
-                                self.ui.form_state = Some(FormState {
-                                    fields,
-                                    values,
-                                    extension_name: ext_name,
-                                });
-                            }
-                        } else {
-                            // Normal results: clear any active form state.
-                            self.ui.form_state = None;
-                            let boosted = crate::selection_frequency::boost_by_frequency(
-                                items,
-                                &self.selection_freq,
-                            );
-                            self.ui.list.set_items(boosted);
-                        }
-                    } else {
-                        println!(
-                            "Discarding {} stale results for '{}' (current: '{}')",
-                            items.len(),
-                            query,
-                            self.ui.search_query
+                        // Normal results: clear any active form state.
+                        self.ui.form_state = None;
+                        let boosted = crate::selection_frequency::boost_by_frequency(
+                            items,
+                            &self.selection_freq,
                         );
+                        self.ui.list.set_items(boosted);
                     }
                 }
                 ExtensionMessage::ExtensionLoaded(name) => {
@@ -989,11 +908,12 @@ impl App {
 
         // Enter key to execute selected item
         if ctx.input(|i| i.key_pressed(egui::Key::Enter))
-            && let Some(item) = self.ui.list.selected_item()
-            && !item.action.is_empty()
-        {
-            self.execute_action(item.action.clone(), ctx);
-        }
+            && let Some(item) = self.ui.list.selected_item() {
+                let action = item.action.clone();
+                if !action.is_empty() {
+                    self.execute_action(action, ctx);
+                }
+            }
 
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             let top_frame = match self.ui.nav_stack.last() {
@@ -1161,10 +1081,8 @@ impl App {
     }
 
     fn execute_action(&mut self, action: String, ctx: &egui::Context) {
+        let _ = ctx; // Used in SetTheme
         println!("Executing action: {action}");
-
-        // Track selection frequency so high-use items rise to the top.
-        // Skip transient/meta actions that aren't real user choices.
         let parsed = parse_action(&action);
         if !matches!(
             parsed,
@@ -1183,7 +1101,7 @@ impl App {
 
         match parsed {
             Action::EnterMode(mode_name) => {
-                // Save the current main-list state so Escape can return here.
+                println!("[execute_action] EnterMode: {}, current_mode before={:?}", mode_name, self.ui.current_mode);
                 let (items, selected_index) = self.ui.list.snapshot();
                 self.ui.nav_stack.push(NavFrame {
                     items,
@@ -1419,6 +1337,7 @@ impl App {
     }
 
     pub fn handle_hotkey_event(&mut self, event: HotkeyEvent, ctx: &egui::Context) {
+        println!("[handle_hotkey_event] event={:?}, current_mode={:?}", event, self.ui.current_mode);
         match event {
             HotkeyEvent::ToggleWindow => {
                 self.ui.window_visible = !self.ui.window_visible;
@@ -1500,6 +1419,7 @@ impl eframe::App for App {
 
         // Handle hotkey events (Unix socket fallback + OS global hotkeys).
         if let Some(event) = self.hotkey.hotkey_manager.try_receive() {
+            println!("[ui] hotkey event: {:?}", event);
             self.handle_hotkey_event(event, &ctx);
         }
 
@@ -1540,8 +1460,13 @@ impl eframe::App for App {
             {
                 let manager = self.ext.extension_manager.clone();
                 let query = self.ui.search_query.clone();
+                let mode = self.ui.current_mode.clone();
                 self.ext.runtime.spawn(async move {
-                    manager.broadcast_search(query).await;
+                    if let Some(ext_name) = mode {
+                        let _ = manager.handle_search(&ext_name, query).await;
+                    } else {
+                        manager.broadcast_search(query).await;
+                    }
                 });
             }
         }

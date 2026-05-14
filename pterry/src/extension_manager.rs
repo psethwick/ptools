@@ -253,21 +253,41 @@ impl ExtensionManager {
         path: &Path,
         name: &str,
     ) -> Result<ExtensionMetadata, ExtensionError> {
-        // Try to load metadata from extension.json or package.json
-        let metadata_path = path
-            .parent()
-            .unwrap_or(Path::new("."))
-            .join("extension.json");
+        let ext_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+        let parent = path.parent().unwrap_or(Path::new("."));
 
+        // ── Sidecar JSON (partial overrides) ─────────────────────────────────
+        // When a <name>.json file sits next to <name>.js/.ts (e.g. calculator.json
+        // next to calculator.js), treat it as a set of overrides to merge into
+        // the default metadata. This lets extensions opt out of auto-load without
+        // requiring a full extension.json.
+        //
+        // NOTE: this is NOT extension.json — that file takes precedence below.
+        let sidecar_path = parent.join(format!("{ext_stem}.json"));
+        let overrides: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&fs::read_to_string(&sidecar_path).unwrap_or_default())
+                .unwrap_or_default();
+
+        // ── extension.json (complete definition) ──────────────────────────────
+        // A full metadata file in the same directory as the entry point.
+        // Takes priority over any sidecar.
+        let metadata_path = parent.join("extension.json");
         if metadata_path.exists() {
-            let metadata_content = fs::read_to_string(&metadata_path)
-                .map_err(|e| ExtensionError::LoadError(format!("Failed to read metadata: {e}")))?;
+            let metadata_content = fs::read_to_string(&metadata_path).map_err(|e| {
+                ExtensionError::LoadError(format!("Failed to read metadata: {e}"))
+            })?;
 
-            return serde_json::from_str(&metadata_content)
-                .map_err(|e| ExtensionError::LoadError(format!("Invalid metadata JSON: {e}")));
+            let mut meta: ExtensionMetadata = serde_json::from_str(&metadata_content)
+                .map_err(|e| ExtensionError::LoadError(format!("Invalid metadata JSON: {e}")))?;
+
+            // Merge sidecar overrides on top of the full definition (allows
+            // extension.json to be a template with just the sidecar flipping
+            // a field or two).
+            apply_overrides(&mut meta, &overrides);
+            return Ok(meta);
         }
 
-        // Fallback: generate metadata from file extension
+        // ── No extension.json: build defaults and apply sidecar overrides ─────
         let language = match path.extension().and_then(|s| s.to_str()) {
             Some("js") => ExtensionLanguage::JavaScript,
             Some("ts" | "tsx") => ExtensionLanguage::TypeScript,
@@ -296,22 +316,20 @@ impl ExtensionManager {
             is_development: false, // overwritten below by load_extension()
         };
 
-        // Check for a sidecar JSON named after the extension (e.g. form-test.json next
-        // to form-test.tsx) that can override individual fields such as `auto_load`.
-        let sidecar_path = path.with_extension("json");
-        if sidecar_path.exists()
-            && let Ok(content) = fs::read_to_string(&sidecar_path)
-            && let Ok(overrides) = serde_json::from_str::<serde_json::Value>(&content)
-        {
-            if let Some(al) = overrides.get("auto_load").and_then(|v| v.as_bool()) {
-                metadata.auto_load = al;
-            }
-            if let Some(desc) = overrides.get("description").and_then(|v| v.as_str()) {
-                metadata.description = Some(desc.to_string());
-            }
-        }
+        apply_overrides(&mut metadata, &overrides);
 
         Ok(metadata)
+    }
+}
+
+/// Merge sidecar `overrides` into `meta`. Only fields present in `overrides`
+/// replace the defaults; everything else stays unchanged.
+fn apply_overrides(meta: &mut ExtensionMetadata, overrides: &serde_json::Map<String, serde_json::Value>) {
+    if let Some(al) = overrides.get("auto_load").and_then(|v| v.as_bool()) {
+        meta.auto_load = al;
+    }
+    if let Some(desc) = overrides.get("description").and_then(|v| v.as_str()) {
+        meta.description = Some(desc.to_string());
     }
 }
 
@@ -325,7 +343,6 @@ impl ExtensionManager {
 
         if let Some(extension) = extensions.get(extension_name) {
             let results = extension.on_search(&query).await?;
-
             // Send results through channel for UI updates
             let _ = self.sender.send(ExtensionMessage::SearchResults(
                 extension_name.to_string(),
@@ -696,7 +713,8 @@ impl ExtensionManager {
         let mut all_results = HashMap::new();
 
         for (name, extension) in extensions.iter() {
-            if !extension.metadata().auto_load {
+            let auto = extension.metadata().auto_load;
+            if !auto {
                 // Non-auto-load: surface launcher_item() so users can discover
                 // and enter the extension's dedicated mode.
                 if let Some(item) = extension.launcher_item() {
