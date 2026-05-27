@@ -205,3 +205,15 @@ pub async fn mark_timesheets_synced(pool: &SqlitePool, ids: &[i64]) -> Result<()
     query.execute(pool).await?;
     Ok(())
 }
+
+/// Clear all timesheet entries for a given remote and date.
+/// This ensures that when we save a new set of entries, we don't leave
+/// behind old entries for the same date.
+pub async fn clear_timesheet_entries(pool: &SqlitePool, remote_id: i64, date: &str) -> Result<()> {
+    sqlx::query("DELETE FROM timesheet WHERE remote_id = ? AND date = ?")
+        .bind(remote_id)
+        .bind(date)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

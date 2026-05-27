@@ -3,6 +3,9 @@ name = "pstore"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+test-utils = []
+
 [dependencies]
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -11,4 +14,8 @@ keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "sy
 serde = { workspace = true }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "migrate", "chrono", "json"] }
 tokio = { workspace = true }
+
+[dev-dependencies]
+# Re-export sqlx features needed by consumers of test utilities
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 

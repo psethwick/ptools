@@ -3,6 +3,9 @@ name = "ptime"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+test-utils = ["pstore/test-utils"]
+
 [dependencies]
 itertools = "0.10.5"
 nom = "7.1.1"
@@ -12,8 +15,10 @@ serde = { version = "1.0.163", features = ["derive"] }
 
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0"
-pstore = { path = "../pstore" }
+pstore = { path = "../pstore", features = ["test-utils"] }
 anyhow = { workspace = true }
+
 [dev-dependencies]
 tempfile = "3"
 temp-env = "0.3.4"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }

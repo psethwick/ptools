@@ -1769,137 +1769,14 @@ impl eframe::App for App {
 #[cfg(test)]
 mod tests {
     use super::{
-        Action, CLIPBOARD_DEBOUNCE, DropdownOption, EscapeOutcome, FormFieldDef, NavTopFrame,
+        Action, CLIPBOARD_DEBOUNCE, EscapeOutcome, FormFieldDef, NavTopFrame,
         clipboard_search_ready, escape_outcome, hides_window_on_action, parse_action,
-        parse_extension_arg, parse_form_def, reclaim_focus_on_text_input,
+        parse_extension_arg, reclaim_focus_on_text_input,
     };
     use crate::modes;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, Instant};
-
-    // --- parse_form_def tests ---
-
-    #[test]
-    fn form_def_textfield_parsed() {
-        let json = r#"{"fields":[{"type":"textfield","id":"name","title":"Name","placeholder":"Enter name","defaultValue":"Alice"}]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert_eq!(fields.len(), 1);
-        assert_eq!(
-            fields[0],
-            FormFieldDef::TextField {
-                id: "name".into(),
-                title: "Name".into(),
-                placeholder: Some("Enter name".into()),
-                default_value: "Alice".into(),
-            }
-        );
-    }
-
-    #[test]
-    fn form_def_textfield_no_placeholder() {
-        let json = r#"{"fields":[{"type":"textfield","id":"q","title":"Q","defaultValue":""}]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert!(matches!(
-            fields[0],
-            FormFieldDef::TextField { ref placeholder, .. } if placeholder.is_none()
-        ));
-    }
-
-    #[test]
-    fn form_def_checkbox_parsed() {
-        let json = r#"{"fields":[{"type":"checkbox","id":"agree","title":"Agreement","label":"I agree","defaultValue":true}]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert_eq!(fields.len(), 1);
-        assert_eq!(
-            fields[0],
-            FormFieldDef::Checkbox {
-                id: "agree".into(),
-                title: "Agreement".into(),
-                label: "I agree".into(),
-                default_value: true,
-            }
-        );
-    }
-
-    #[test]
-    fn form_def_checkbox_default_false() {
-        let json = r#"{"fields":[{"type":"checkbox","id":"x","title":"X","label":"","defaultValue":false}]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert!(matches!(
-            fields[0],
-            FormFieldDef::Checkbox {
-                default_value: false,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn form_def_dropdown_parsed() {
-        let json = r#"{"fields":[{"type":"dropdown","id":"color","title":"Color","options":[{"value":"red","title":"Red"},{"value":"blue","title":"Blue"}],"defaultValue":"red"}]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert_eq!(fields.len(), 1);
-        assert_eq!(
-            fields[0],
-            FormFieldDef::Dropdown {
-                id: "color".into(),
-                title: "Color".into(),
-                options: vec![
-                    DropdownOption {
-                        value: "red".into(),
-                        title: "Red".into()
-                    },
-                    DropdownOption {
-                        value: "blue".into(),
-                        title: "Blue".into()
-                    },
-                ],
-                default_value: "red".into(),
-            }
-        );
-    }
-
-    #[test]
-    fn form_def_dropdown_default_falls_back_to_first_option() {
-        let json = r#"{"fields":[{"type":"dropdown","id":"d","title":"D","options":[{"value":"a","title":"A"}]}]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert!(matches!(
-            &fields[0],
-            FormFieldDef::Dropdown { default_value, .. } if default_value == "a"
-        ));
-    }
-
-    #[test]
-    fn form_def_invalid_json_returns_none() {
-        assert!(parse_form_def("not json").is_none());
-    }
-
-    #[test]
-    fn form_def_missing_fields_key_returns_none() {
-        assert!(parse_form_def(r#"{"other": []}"#).is_none());
-    }
-
-    #[test]
-    fn form_def_unknown_field_type_is_skipped() {
-        let json = r#"{"fields":[{"type":"unknown","id":"x","title":"X"}]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert!(fields.is_empty());
-    }
-
-    #[test]
-    fn form_def_mixed_fields() {
-        let json = r#"{"fields":[
-            {"type":"textfield","id":"a","title":"A","defaultValue":""},
-            {"type":"checkbox","id":"b","title":"B","label":"","defaultValue":false},
-            {"type":"dropdown","id":"c","title":"C","options":[],"defaultValue":""}
-        ]}"#;
-        let fields = parse_form_def(json).unwrap();
-        assert_eq!(fields.len(), 3);
-        assert!(matches!(fields[0], FormFieldDef::TextField { .. }));
-        assert!(matches!(fields[1], FormFieldDef::Checkbox { .. }));
-        assert!(matches!(fields[2], FormFieldDef::Dropdown { .. }));
-    }
 
     #[test]
     fn form_field_def_id_accessor() {

@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::NaiveDate;
 use itertools::Itertools;
 use pstore::models::{Timesheet, decimal_hours_to_jira};
+use pstore::db::Pool;
 use serde::Serialize;
 
 // TODO: client and task should maybe also be Option?
@@ -69,9 +70,39 @@ impl Day {
             .sum()
     }
 
+    /// Save timesheet entries to pstore. Clears any existing entries for this
+    /// remote and date first, then inserts the new entries.
     pub async fn save_to_pstore(&self, remote_name: &str) -> Result<()> {
         let pool = pstore::db::init().await?;
-        let remotes = pstore::queries::get_remotes(&pool).await?;
+        self.do_save_to_pstore(&pool, remote_name).await
+    }
+
+    #[cfg(feature = "test-utils")]
+    /// Save timesheet entries to a specific pool. Useful for testing.
+    pub async fn save_to_pstore_with_pool(&self, pool: &Pool, remote_name: &str) -> Result<()> {
+        self.do_save_to_pstore(pool, remote_name).await
+    }
+
+    async fn do_save_to_pstore(&self, pool: &Pool, remote_name: &str) -> Result<()> {
+        let remotes = pstore::queries::get_remotes(pool).await?;
+
+        // Find the remote matching the given name
+        let remote = match remotes
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(remote_name))
+        {
+            Some(r) => r,
+            None => {
+                eprintln!("Warning: Could not find remote '{remote_name}'");
+                return Ok(());
+            }
+        };
+
+        let date_str = self.date.format("%Y-%m-%d").to_string();
+
+        // Clear existing entries for this remote and date to ensure clean state
+        // This handles the case where the user fixed a typo in ticket ID
+        pstore::queries::clear_timesheet_entries(pool, remote.id, &date_str).await?;
 
         let mut tx = pool.begin().await?;
 
@@ -87,24 +118,16 @@ impl Day {
             })
             .into_group_map()
         {
-            if let Some(remote) = remotes
-                .iter()
-                .find(|s| s.name.eq_ignore_ascii_case(remote_name))
-            {
-                let total_hours = duration.iter().sum::<f64>();
-                let date_str = self.date.format("%Y-%m-%d").to_string();
-                let duration_str = decimal_hours_to_jira(total_hours);
+            let total_hours = duration.iter().sum::<f64>();
+            let duration_str = decimal_hours_to_jira(total_hours);
 
-                let ts = Timesheet {
-                    remote_id: remote.id,
-                    ticket_id: ticket_id.clone(),
-                    date: date_str,
-                    duration: duration_str.clone(),
-                };
-                ts.save(&mut *tx).await?;
-            } else {
-                eprintln!("Warning: Could not find remote for ticket {ticket_id}");
-            }
+            let ts = Timesheet {
+                remote_id: remote.id,
+                ticket_id: ticket_id.clone(),
+                date: date_str.clone(),
+                duration: duration_str,
+            };
+            ts.save(&mut *tx).await?;
         }
 
         tx.commit().await?;

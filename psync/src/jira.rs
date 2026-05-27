@@ -227,26 +227,36 @@ impl Jira {
 
     pub async fn get_myself(&self, client: &Client) -> Result<String> {
         let url = format!("{}/rest/api/3/myself", self.base_url());
-        let resp: JiraMyselfResponse = client
+        let resp = client
             .get(&url)
             .basic_auth(&self.user, Some(&self.password))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp.account_id)
+        let status = resp.status();
+        let text = resp.text().await?;
+        if !status.is_success() {
+            return Err(anyhow!("get_myself ({status}): {text}"));
+        }
+        serde_json::from_str::<JiraMyselfResponse>(&text)
+            .map(|r| r.account_id)
+            .map_err(|e| anyhow!("get_myself: {e}\nBody: {text}"))
     }
 
     pub async fn get_worklogs(&self, client: &Client, ticket: &str) -> Result<Vec<JiraWorklogEntry>> {
         let url = format!("{}/rest/api/3/issue/{ticket}/worklog", self.base_url());
-        let resp: JiraWorklogResponse = client
+        let resp = client
             .get(&url)
             .basic_auth(&self.user, Some(&self.password))
             .send()
-            .await?
-            .json()
             .await?;
-        Ok(resp.worklogs)
+        let status = resp.status();
+        let text = resp.text().await?;
+        if !status.is_success() {
+            return Err(anyhow!("get_worklogs {ticket} ({status}): {text}"));
+        }
+        serde_json::from_str::<JiraWorklogResponse>(&text)
+            .map(|r| r.worklogs)
+            .map_err(|e| anyhow!("get_worklogs {ticket}: {e}\nBody: {text}"))
     }
 
     pub async fn add_worklog(&self, client: &Client, ticket: &str, date: &str, duration: &str) -> Result<()> {
