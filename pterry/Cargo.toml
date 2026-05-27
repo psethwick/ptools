@@ -24,10 +24,10 @@ arboard = "3.3"
 chrono = { version = "0.4", features = ["serde"] }
 ureq = { version = "2", features = ["tls"] }
 global-hotkey = "0.7"
-rolldown = "0.1"
+rolldown = "0.1.1"
 flate2 = "1"
 tar = "0.4"
-oxc_resolver = "=11.10.0"
+oxc_resolver = "11.19.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 base64 = "0.22"
 sha2 = "0.10"
