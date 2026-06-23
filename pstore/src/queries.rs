@@ -14,10 +14,35 @@ pub async fn get_remotes(pool: &SqlitePool) -> Result<Vec<Remote>> {
 
 pub async fn remove_remote(pool: &SqlitePool, remote_to_remove: &Remote) -> Result<()> {
     delete_password(remote_to_remove)?;
+    // Delete associated rows first (cascade manually since SQLite doesn't enforce FK by default)
+    sqlx::query("DELETE FROM timesheet WHERE remote_id = ?")
+        .bind(remote_to_remove.id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM person WHERE remote_id = ?")
+        .bind(remote_to_remove.id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM work WHERE remote_id = ?")
+        .bind(remote_to_remove.id)
+        .execute(pool)
+        .await?;
+    sqlx::query("DELETE FROM release WHERE remote_id = ?")
+        .bind(remote_to_remove.id)
+        .execute(pool)
+        .await?;
     sqlx::query("DELETE FROM remote WHERE id=?")
         .bind(remote_to_remove.id)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+pub fn set_password(remote: &Remote, password: &str) -> Result<()> {
+    let entry = Entry::new(SERVICE_NAME, &format!("{}-{}", remote.kind, remote.name))?;
+    // Delete existing credential first to handle keyring implementations that don't overwrite
+    let _ = entry.delete_credential();
+    entry.set_password(password)?;
     Ok(())
 }
 

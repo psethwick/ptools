@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use pstore::models::Kind;
-use pstore::queries::{add_remote, get_remotes, get_work, get_releases, remove_remote};
+use pstore::queries::{add_remote, get_remotes, get_work, get_releases, remove_remote, set_password};
 use tokio::task::JoinSet;
 
 #[derive(Debug, Parser)]
@@ -25,6 +25,9 @@ enum Command {
     /// Delete a remote
     #[command(subcommand)]
     Delete(DeleteCommand),
+    /// Update a remote's secret
+    #[command(subcommand)]
+    Set(SetCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -54,6 +57,12 @@ enum DeleteCommand {
     Jira { org: String },
 }
 
+#[derive(Debug, Subcommand)]
+enum SetCommand {
+    AzureDevops { org: String, pat: String },
+    Jira { org: String, user: String, password: String },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Cli::parse();
@@ -69,9 +78,11 @@ async fn main() -> Result<()> {
             for remote in remotes {
                 let client = client.clone();
                 let pool = pool.clone();
+                let remote_name = remote.name.clone();
+                let remote_kind = remote.kind;
                 set.spawn(async move {
                     if let Err(e) = psync::pull(&remote, &client, &pool).await {
-                        eprintln!("Sync failed: {e}");
+                        eprintln!("Sync failed for {remote_kind}-{remote_name}: {e}");
                     }
                 });
             }
@@ -153,6 +164,30 @@ async fn main() -> Result<()> {
                     .unwrap();
                 remove_remote(&pool, remote_to_remove).await?;
                 println!("Deleted remote: {}-{org}", Kind::Jira);
+            }
+        },
+        Command::Set(set_cmd) => match set_cmd {
+            SetCommand::AzureDevops { org, pat } => {
+                let remotes = get_remotes(&pool).await?;
+                let remote = remotes
+                    .iter()
+                    .find(|s| s.kind == Kind::AzureDevops && s.name == org)
+                    .ok_or_else(|| anyhow::anyhow!("Remote not found: {}-{}", Kind::AzureDevops, org))?;
+                set_password(remote, &pat)?;
+                println!("Updated secret for: {}-{org}", Kind::AzureDevops);
+            }
+            SetCommand::Jira { org, user, password } => {
+                let remotes = get_remotes(&pool).await?;
+                let remote = remotes
+                    .iter()
+                    .find(|s| s.kind == Kind::Jira && s.name == org)
+                    .ok_or_else(|| anyhow::anyhow!("Remote not found: {}-{}", Kind::Jira, org))?;
+                let credentials = serde_json::json!({
+                    "user": user,
+                    "password": password
+                });
+                set_password(remote, &credentials.to_string())?;
+                println!("Updated secret for: {}-{org}", Kind::Jira);
             }
         },
     }
